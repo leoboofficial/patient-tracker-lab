@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily Medicine Schedule — Patient Tracker</title>
+  <link rel="stylesheet" href="patient.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Daily Medicine Dosage Checklist</h1>
+        <p class="pt-page-subtitle">Check off your Morning, Afternoon, and Night doses based on active prescriptions.</p>
+      </div>
+      <button type="button" id="btnResetToday" class="pt-btn pt-btn-secondary">Reset Today's Checks</button>
+    </div>
+
+    <div class="dosage-checklist-grid" id="dosageGrid"></div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script>
+    var user = requireAuth(["Patient"]);
+    var CHECK_KEY = "pt_dosage_checks_" + getTodayDateString();
+
+    function getChecks() {
+      try {
+        return JSON.parse(localStorage.getItem(CHECK_KEY) || "{}");
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function toggleCheck(key, checked) {
+      var checks = getChecks();
+      checks[key] = checked;
+      localStorage.setItem(CHECK_KEY, JSON.stringify(checks));
+    }
+
+    if (user) {
+      renderNavbar("dosage-list.html");
+      renderDosageChecklist();
+    }
+
+    function renderDosageChecklist() {
+      var patId = user.refId || "PAT-101";
+      var rxs = getData("prescriptions").filter(function (r) { return r.patientNumber === patId; });
+      var checks = getChecks();
+
+      var slots = [
+        { id: "morning", title: "Morning (After Breakfast)", match: /morning|twice|daily|breakfast|2/i },
+        { id: "afternoon", title: "Afternoon (After Lunch)", match: /afternoon|thrice|3/i },
+        { id: "night", title: "Night (Before Sleep)", match: /night|twice|daily|sleep|bed/i }
+      ];
+
+      var allItems = [];
+      rxs.forEach(function (rx) {
+        rx.items.forEach(function (item) {
+          allItems.push({ rx: rx.prescriptionNumber, name: item.medicineName, instructions: item.instructions });
+        });
+      });
+
+      var grid = document.getElementById("dosageGrid");
+      if (allItems.length === 0) {
+        grid.innerHTML = '<div class="pat-empty-card" style="grid-column:1/-1;"><h3>No Active Prescriptions</h3><p>Your daily medicine checklist will populate once a doctor issues a prescription.</p></div>';
+        return;
+      }
+
+      grid.innerHTML = slots.map(function (slot) {
+        var matching = allItems.filter(function (it) { return slot.match.test(it.instructions); });
+        if (matching.length === 0 && slot.id === "morning") matching = allItems;
+
+        var itemsHtml = matching.length === 0
+          ? '<p style="font-size:13px; color:#64748b;">No doses scheduled for this slot.</p>'
+          : matching.map(function (it, idx) {
+              var key = patId + "_" + slot.id + "_" + it.rx + "_" + idx;
+              var isChecked = !!checks[key];
+              return (
+                '<label class="dosage-item-check">' +
+                  '<input type="checkbox" ' + (isChecked ? 'checked ' : '') + 'onchange="toggleCheck(\'' + escapeHtml(key) + '\', this.checked)" />' +
+                  '<div><strong>' + escapeHtml(it.name) + '</strong><div style="font-size:12px; color:#64748b;">' + escapeHtml(it.instructions) + '</div></div>' +
+                '</label>'
+              );
+            }).join("");
+
+        return (
+          '<section class="dosage-slot-card">' +
+            '<h3>' + escapeHtml(slot.title) + '</h3>' +
+            itemsHtml +
+          '</section>'
+        );
+      }).join("");
+    }
+
+    document.getElementById("btnResetToday").addEventListener("click", function () {
+      localStorage.removeItem(CHECK_KEY);
+      renderDosageChecklist();
+    });
+  </script>
+</body>
+</html>

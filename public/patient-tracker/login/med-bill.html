@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pharmacy Medicine Bill — Patient Tracker</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container" style="max-width:900px;">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Pharmacy Medicine Billing</h1>
+        <p class="pt-page-subtitle">Load an e-prescription, compute medicine totals, and deduct dispensed stock.</p>
+      </div>
+    </div>
+
+    <div id="alertBox" class="pt-alert" style="display:none;"></div>
+
+    <section class="pt-card" style="margin-bottom:24px;">
+      <form id="medBillForm">
+        <div class="pt-form-grid">
+          <div class="pt-field">
+            <label for="billNumber">Bill Number</label>
+            <input type="text" id="billNumber" readonly />
+          </div>
+          <div class="pt-field">
+            <label for="prescriptionNumber">Prescription Number</label>
+            <select id="prescriptionNumber" required></select>
+          </div>
+          <div class="pt-field">
+            <label for="patientNumber">Patient Number</label>
+            <input type="text" id="patientNumber" readonly />
+          </div>
+          <div class="pt-field">
+            <label for="billAmount">Total Bill Amount (INR)</label>
+            <input type="number" id="billAmount" min="0" step="0.01" readonly required />
+          </div>
+          <div class="pt-field">
+            <label for="paymentMode">Payment Mode</label>
+            <select id="paymentMode" required>
+              <option value="Cash">Cash</option>
+              <option value="Card">Card</option>
+            </select>
+          </div>
+          <div class="pt-field" id="cardNumberWrap" style="display:none;">
+            <label for="cardNumber">Card Number</label>
+            <input type="text" id="cardNumber" maxlength="19" placeholder="4532 8910 2341 4242" />
+          </div>
+          <div class="pt-field full">
+            <label class="pt-checkbox-label">
+              <input type="checkbox" id="billPaid" checked /> Mark Pharmacy Bill as Paid
+            </label>
+          </div>
+        </div>
+
+        <div id="rxItemsPreview" style="margin-top:16px;"></div>
+
+        <div class="pt-form-actions">
+          <button type="submit" class="pt-btn pt-btn-primary">Generate Pharmacy Bill</button>
+        </div>
+      </form>
+    </section>
+
+    <div class="pt-table-wrap">
+      <table class="pt-table">
+        <thead>
+          <tr>
+            <th>Bill Number</th>
+            <th>Rx Number</th>
+            <th>Patient ID</th>
+            <th>Payment Mode</th>
+            <th>Card</th>
+            <th>Amount</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="medBillsBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="alert.js"></script>
+  <script src="session.js"></script>
+  <script src="navbar.js"></script>
+  <script>
+    var user = requireAuth(["Clerk", "Admin"]);
+    if (user) {
+      renderNavbar("med-bill.html");
+      initMedBillPage();
+    }
+
+    function initMedBillPage() {
+      document.getElementById("billNumber").value = getNextId("bills", "BILL");
+      var prescriptions = getData("prescriptions");
+      var sel = document.getElementById("prescriptionNumber");
+      sel.innerHTML = '<option value="">-- Select Prescription --</option>' + prescriptions.map(function (rx) {
+        return '<option value="' + escapeHtml(rx.prescriptionNumber) + '">' +
+          escapeHtml(rx.prescriptionNumber + " — Patient " + rx.patientNumber + " (" + rx.items.length + " items)") +
+        '</option>';
+      }).join("");
+      renderMedBills();
+    }
+
+    document.getElementById("prescriptionNumber").addEventListener("change", function () {
+      var rxNum = this.value;
+      var preview = document.getElementById("rxItemsPreview");
+      if (!rxNum) {
+        document.getElementById("patientNumber").value = "";
+        document.getElementById("billAmount").value = "";
+        preview.innerHTML = "";
+        return;
+      }
+
+      var rx = getData("prescriptions").find(function (r) { return r.prescriptionNumber === rxNum; });
+      if (!rx) return;
+      document.getElementById("patientNumber").value = rx.patientNumber;
+
+      var meds = getData("medicines");
+      var total = 0;
+      var rowsHtml = rx.items.map(function (item) {
+        var med = meds.find(function (m) { return m.medicineId === item.medicineId; });
+        var unitPrice = med ? Number(med.price) : 0;
+        var lineTotal = unitPrice * Number(item.quantity);
+        total += lineTotal;
+        return (
+          '<tr>' +
+            '<td class="mono">' + escapeHtml(item.medicineId) + '</td>' +
+            '<td>' + escapeHtml(item.medicineName) + '</td>' +
+            '<td class="tabular">' + escapeHtml(item.quantity) + '</td>' +
+            '<td class="tabular">₹' + unitPrice.toFixed(2) + '</td>' +
+            '<td class="tabular">₹' + lineTotal.toFixed(2) + '</td>' +
+          '</tr>'
+        );
+      }).join("");
+
+      document.getElementById("billAmount").value = total.toFixed(2);
+      preview.innerHTML =
+        '<div class="pt-table-wrap"><table class="pt-table"><thead><tr><th>Med ID</th><th>Medicine</th><th>Qty</th><th>Unit Price</th><th>Line Total</th></tr></thead><tbody>' +
+        rowsHtml + '</tbody></table></div>';
+    });
+
+    document.getElementById("paymentMode").addEventListener("change", function () {
+      var isCard = this.value === "Card";
+      document.getElementById("cardNumberWrap").style.display = isCard ? "flex" : "none";
+      document.getElementById("cardNumber").required = isCard;
+    });
+
+    function renderMedBills() {
+      var bills = getData("bills").filter(function (b) { return b.billType === "MED"; });
+      var tbody = document.getElementById("medBillsBody");
+      if (bills.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b; padding:20px;">No pharmacy bills generated yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = bills.slice().reverse().map(function (b) {
+        return (
+          '<tr>' +
+            '<td class="mono">' + escapeHtml(b.billNumber) + '</td>' +
+            '<td class="mono">' + escapeHtml(b.prescriptionNumber) + '</td>' +
+            '<td class="mono">' + escapeHtml(b.patientNumber) + '</td>' +
+            '<td>' + escapeHtml(b.paymentMode) + '</td>' +
+            '<td class="mono">' + escapeHtml(b.paymentMode === "Card" ? maskCardNumber(b.cardNumber) : "—") + '</td>' +
+            '<td class="tabular">₹' + Number(b.billAmount).toFixed(2) + '</td>' +
+            '<td>' + (b.billPaid ? '<span class="status-text-success">Paid</span>' : '<span class="status-text-warning">Pending</span>') + '</td>' +
+          '</tr>'
+        );
+      }).join("");
+    }
+
+    document.getElementById("medBillForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      clearAlert();
+
+      var billNumber = document.getElementById("billNumber").value.trim();
+      var rxNum = document.getElementById("prescriptionNumber").value;
+      var patientNumber = document.getElementById("patientNumber").value;
+      var billAmount = parseFloat(document.getElementById("billAmount").value);
+      var paymentMode = document.getElementById("paymentMode").value;
+      var cardNumber = document.getElementById("cardNumber").value.replace(/\s+/g, "");
+      var billPaid = document.getElementById("billPaid").checked;
+
+      if (!rxNum) {
+        showError("Select a Prescription Number first.");
+        return;
+      }
+      if (paymentMode === "Card" && !/^\d{12,19}$/.test(cardNumber)) {
+        showError("Please enter a valid 12–19 digit Card Number.");
+        return;
+      }
+
+      // Deduct stock quantities
+      var rx = getData("prescriptions").find(function (r) { return r.prescriptionNumber === rxNum; });
+      if (rx) {
+        var meds = getData("medicines");
+        rx.items.forEach(function (item) {
+          var mIdx = meds.findIndex(function (m) { return m.medicineId === item.medicineId; });
+          if (mIdx !== -1) {
+            meds[mIdx].quantity = Math.max(0, Number(meds[mIdx].quantity) - Number(item.quantity));
+          }
+        });
+        saveData("medicines", meds);
+      }
+
+      var bills = getData("bills");
+      bills.push({
+        billNumber: billNumber,
+        billType: "MED",
+        patientNumber: patientNumber,
+        prescriptionNumber: rxNum,
+        paymentMode: paymentMode,
+        cardNumber: paymentMode === "Card" ? cardNumber : "",
+        billAmount: billAmount,
+        billPaid: billPaid,
+        date: getTodayDateString()
+      });
+      saveData("bills", bills);
+
+      document.getElementById("medBillForm").reset();
+      document.getElementById("cardNumberWrap").style.display = "none";
+      document.getElementById("rxItemsPreview").innerHTML = "";
+      document.getElementById("billNumber").value = getNextId("bills", "BILL");
+      renderMedBills();
+      showSuccess("Pharmacy Bill " + billNumber + " saved and stock inventory updated.");
+    });
+  </script>
+</body>
+</html>

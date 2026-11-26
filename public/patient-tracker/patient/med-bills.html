@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pharmacy Bills — Patient Tracker</title>
+  <link rel="stylesheet" href="patient.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Pharmacy Medicine Bills</h1>
+        <p class="pt-page-subtitle">View dispensed medication invoices with masked card numbers and payment status.</p>
+      </div>
+      <a href="reg-bills.html" class="pt-btn pt-btn-secondary">View OPD Bills</a>
+    </div>
+
+    <div id="medBillSummary"></div>
+
+    <div class="pt-table-wrap">
+      <table class="pt-table">
+        <thead>
+          <tr>
+            <th>Bill Number</th>
+            <th>Rx Number</th>
+            <th>Date</th>
+            <th>Payment Mode</th>
+            <th>Card Number</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Receipt</th>
+          </tr>
+        </thead>
+        <tbody id="medBillsBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script src="bill-totals.js"></script>
+  <script>
+    var user = requireAuth(["Patient"]);
+    if (user) {
+      renderNavbar("med-bills.html");
+      var patId = user.refId || "PAT-101";
+      renderPatientBillTotals("medBillSummary", patId, "MED");
+
+      var bills = getData("bills").filter(function (b) {
+        return b.patientNumber === patId && b.billType === "MED";
+      });
+
+      var tbody = document.getElementById("medBillsBody");
+      if (bills.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#64748b; padding:24px;">No pharmacy medicine bills found.</td></tr>';
+      } else {
+        tbody.innerHTML = bills.map(function (b) {
+          return (
+            '<tr>' +
+              '<td class="mono">' + escapeHtml(b.billNumber) + '</td>' +
+              '<td class="mono">' + escapeHtml(b.prescriptionNumber || "—") + '</td>' +
+              '<td class="mono">' + escapeHtml(b.date || "-") + '</td>' +
+              '<td>' + escapeHtml(b.paymentMode) + '</td>' +
+              '<td class="mono">' + escapeHtml(b.paymentMode === "Card" ? maskCardNumber(b.cardNumber) : "—") + '</td>' +
+              '<td class="tabular">₹' + Number(b.billAmount).toFixed(2) + '</td>' +
+              '<td>' + (b.billPaid ? '<span class="status-text-success">Paid</span>' : '<span class="status-text-warning">Pending</span>') + '</td>' +
+              '<td><a href="receipt.html?bill=' + encodeURIComponent(b.billNumber) + '" class="pt-btn pt-btn-secondary pt-btn-sm">Print Receipt</a></td>' +
+            '</tr>'
+          );
+        }).join("");
+      }
+    }
+  </script>
+</body>
+</html>

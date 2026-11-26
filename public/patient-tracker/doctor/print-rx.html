@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Printable Prescription Slip — Patient Tracker</title>
+  <link rel="stylesheet" href="doctor.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header no-print">
+      <div>
+        <h1 class="pt-page-title">Printable Prescription Slip</h1>
+        <p class="pt-page-subtitle">Formatted clinical prescription ready for printing or patient handover.</p>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <a href="today-list.html" class="pt-btn pt-btn-secondary">Back to Visits</a>
+        <button type="button" class="pt-btn pt-btn-primary" onclick="window.print()">Print Prescription</button>
+      </div>
+    </div>
+
+    <article class="print-slip" id="printSlipRoot"></article>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script>
+    var user = requireAuth(["Doctor", "Clerk", "Patient"]);
+    if (user) {
+      renderNavbar("print-rx.html");
+      var params = new URLSearchParams(window.location.search);
+      var rxParam = params.get("rx");
+      var rxs = getData("prescriptions");
+      var rx = rxParam ? rxs.find(function (r) { return r.prescriptionNumber === rxParam; }) : rxs[0];
+      var root = document.getElementById("printSlipRoot");
+
+      if (!rx) {
+        root.innerHTML = '<p style="color:#64748b;">No prescription record found.</p>';
+      } else {
+        var doc = getData("doctors").find(function (d) { return d.doctorId === rx.doctorId; });
+        var pat = getData("patients").find(function (p) { return p.patientNumber === rx.patientNumber; });
+        var rowsHtml = rx.items.map(function (item, idx) {
+          return (
+            '<tr>' +
+              '<td class="tabular">' + (idx + 1) + '</td>' +
+              '<td><strong>' + escapeHtml(item.medicineName) + '</strong> <span class="mono" style="font-size:12px; color:#64748b;">(' + escapeHtml(item.medicineId) + ')</span></td>' +
+              '<td class="tabular">' + escapeHtml(item.quantity) + '</td>' +
+              '<td>' + escapeHtml(item.instructions) + '</td>' +
+            '</tr>'
+          );
+        }).join("");
+
+        root.innerHTML =
+          '<div class="print-slip-header">' +
+            '<div>' +
+              '<h2 style="font-size:22px;">City General Clinic &amp; Hospital</h2>' +
+              '<div style="font-size:13px; color:#475569;">' + escapeHtml(doc ? doc.doctorName + " · " + doc.qualification : rx.doctorId) + '</div>' +
+            '</div>' +
+            '<div style="text-align:right;">' +
+              '<div class="mono" style="font-size:15px; font-weight:700;">' + escapeHtml(rx.prescriptionNumber) + '</div>' +
+              '<div class="mono" style="font-size:12.5px; color:#475569;">Date: ' + escapeHtml(rx.date) + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px; font-size:13.5px;">' +
+            '<div><span style="color:#64748b;">Patient:</span> <strong>' + escapeHtml(pat ? pat.name : rx.patientNumber) + '</strong></div>' +
+            '<div><span style="color:#64748b;">Patient ID:</span> <span class="mono">' + escapeHtml(rx.patientNumber) + '</span></div>' +
+            '<div><span style="color:#64748b;">Consultation:</span> <span class="mono">' + escapeHtml(rx.consultationId) + '</span></div>' +
+          '</div>' +
+          '<div class="pt-table-wrap" style="margin-bottom:20px;">' +
+            '<table class="pt-table">' +
+              '<thead><tr><th>#</th><th>Medicine</th><th>Qty</th><th>Dosage Instructions</th></tr></thead>' +
+              '<tbody>' + rowsHtml + '</tbody>' +
+            '</table>' +
+          '</div>' +
+          '<div style="font-size:13.5px; color:#334155;"><strong>Clinical Notes:</strong> ' + escapeHtml(rx.notes || "Follow prescribed dosage schedule.") + '</div>';
+      }
+    }
+  </script>
+</body>
+</html>

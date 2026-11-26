@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Medicine Stock — Patient Tracker</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Pharmacy Medicine Stock</h1>
+        <p class="pt-page-subtitle">Items with quantity below 10 units are highlighted in red as Low Stock.</p>
+      </div>
+      <a href="add-medicine.html" class="pt-btn pt-btn-primary">Add Medicine</a>
+    </div>
+
+    <div class="pt-toolbar">
+      <input type="text" id="searchStock" class="pt-search-input" placeholder="Search medicine name or company..." />
+      <span id="stockSummary" style="font-size:13px; color:#64748b;"></span>
+    </div>
+
+    <div class="pt-table-wrap">
+      <table class="pt-table">
+        <thead>
+          <tr>
+            <th>Medicine ID</th>
+            <th>Medicine Name</th>
+            <th>Company</th>
+            <th>Quantity</th>
+            <th>Unit Price</th>
+            <th>Expiry Date</th>
+            <th>Stock Status</th>
+          </tr>
+        </thead>
+        <tbody id="stockTableBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="session.js"></script>
+  <script src="navbar.js"></script>
+  <script>
+    var user = requireAuth(["Clerk", "Admin", "Doctor"]);
+    if (user) {
+      renderNavbar("stock-list.html");
+      renderStock("");
+    }
+
+    function renderStock(query) {
+      var list = getData("medicines");
+      var q = query.trim().toLowerCase();
+      var filtered = list.filter(function (m) {
+        return !q ||
+          m.medicineId.toLowerCase().indexOf(q) !== -1 ||
+          m.name.toLowerCase().indexOf(q) !== -1 ||
+          m.company.toLowerCase().indexOf(q) !== -1;
+      });
+
+      var lowCount = filtered.filter(function (m) { return Number(m.quantity) < 10; }).length;
+      document.getElementById("stockSummary").textContent =
+        filtered.length + " item(s) · " + lowCount + " low-stock alert(s)";
+
+      var tbody = document.getElementById("stockTableBody");
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b; padding:24px;">No medicines found in inventory.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(function (m) {
+        var isLow = Number(m.quantity) < 10;
+        return (
+          '<tr class="' + (isLow ? 'row-low-stock' : '') + '">' +
+            '<td class="mono">' + escapeHtml(m.medicineId) + '</td>' +
+            '<td><strong>' + escapeHtml(m.name) + '</strong></td>' +
+            '<td>' + escapeHtml(m.company) + '</td>' +
+            '<td class="tabular">' + escapeHtml(m.quantity) + '</td>' +
+            '<td class="tabular">₹' + Number(m.price).toFixed(2) + '</td>' +
+            '<td class="mono">' + escapeHtml(m.expiryDate) + '</td>' +
+            '<td>' + (isLow ? '<span class="status-text-danger">Low Stock (&lt; 10)</span>' : '<span class="status-text-success">In Stock</span>') + '</td>' +
+          '</tr>'
+        );
+      }).join("");
+    }
+
+    document.getElementById("searchStock").addEventListener("input", function (e) {
+      renderStock(e.target.value);
+    });
+  </script>
+</body>
+</html>

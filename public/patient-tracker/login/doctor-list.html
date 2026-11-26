@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Doctor Directory — Patient Tracker</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Registered Doctors</h1>
+        <p class="pt-page-subtitle">Searchable roster of medical practitioners across departments.</p>
+      </div>
+      <a href="add-doctor.html" class="pt-btn pt-btn-primary">Add Doctor</a>
+    </div>
+
+    <div class="pt-toolbar">
+      <input type="text" id="searchDoctors" class="pt-search-input" placeholder="Search by Doctor ID, Name, or Qualification..." />
+      <span id="doctorCountLabel" style="font-size:13px; color:#64748b;"></span>
+    </div>
+
+    <div class="pt-table-wrap">
+      <table class="pt-table">
+        <thead>
+          <tr>
+            <th>Doctor ID</th>
+            <th>Doctor Name</th>
+            <th>Qualification</th>
+            <th>Age</th>
+            <th>Experience</th>
+            <th>Contact</th>
+            <th>Clinic Address</th>
+          </tr>
+        </thead>
+        <tbody id="doctorsTableBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="session.js"></script>
+  <script src="navbar.js"></script>
+  <script>
+    var user = requireAuth(["Admin", "Clerk"]);
+    if (user) {
+      renderNavbar("doctor-list.html");
+      renderDoctors("");
+    }
+
+    function renderDoctors(query) {
+      var list = getData("doctors");
+      var q = query.trim().toLowerCase();
+      var filtered = list.filter(function (d) {
+        return !q ||
+          d.doctorId.toLowerCase().indexOf(q) !== -1 ||
+          d.doctorName.toLowerCase().indexOf(q) !== -1 ||
+          d.qualification.toLowerCase().indexOf(q) !== -1;
+      });
+
+      document.getElementById("doctorCountLabel").textContent = filtered.length + " doctor(s) shown";
+      var tbody = document.getElementById("doctorsTableBody");
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b; padding:24px;">No matching doctor records found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(function (d) {
+        return (
+          '<tr>' +
+            '<td class="mono">' + escapeHtml(d.doctorId) + '</td>' +
+            '<td><strong>' + escapeHtml(d.doctorName) + '</strong></td>' +
+            '<td>' + escapeHtml(d.qualification) + '</td>' +
+            '<td class="tabular">' + escapeHtml(d.age) + '</td>' +
+            '<td class="tabular">' + escapeHtml(d.experience) + ' yrs</td>' +
+            '<td class="mono">' + escapeHtml(d.contact) + '</td>' +
+            '<td>' + escapeHtml(d.address) + '</td>' +
+          '</tr>'
+        );
+      }).join("");
+    }
+
+    document.getElementById("searchDoctors").addEventListener("input", function (e) {
+      renderDoctors(e.target.value);
+    });
+  </script>
+</body>
+</html>

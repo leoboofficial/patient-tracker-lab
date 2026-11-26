@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Doctor Dashboard — Patient Tracker</title>
+  <link rel="stylesheet" href="doctor.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title" id="welcomeBanner">Clinical Workspace</h1>
+        <p class="pt-page-subtitle">Record patient consultations, write e-prescriptions, and review recovery feedback.</p>
+      </div>
+      <a href="consultation.html" class="pt-btn pt-btn-primary">New Consultation</a>
+    </div>
+
+    <section class="pt-stats-grid">
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Today's Consultations</div>
+        <div class="pt-stat-value" id="statToday">0</div>
+      </div>
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Total Consultations</div>
+        <div class="pt-stat-value" id="statTotal">0</div>
+      </div>
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Prescriptions Issued</div>
+        <div class="pt-stat-value" id="statRx">0</div>
+      </div>
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Patient Feedback Received</div>
+        <div class="pt-stat-value" id="statFeedback">0</div>
+      </div>
+    </section>
+
+    <section class="pt-actions-grid">
+      <a href="consultation.html" class="pt-action-tile">
+        <h3>Start Consultation</h3>
+        <p>Look up a patient by ID, record symptoms, and generate an Rx link.</p>
+      </a>
+      <a href="today-list.html" class="pt-action-tile">
+        <h3>Today's Visits</h3>
+        <p>View all patients consulted today and open or print prescriptions.</p>
+      </a>
+      <a href="patient-history.html" class="pt-action-tile">
+        <h3>Patient Visit History</h3>
+        <p>Search previous consultations and diagnoses by Patient ID.</p>
+      </a>
+      <a href="feedback-view.html" class="pt-action-tile">
+        <h3>Patient Side-Effect Feedback</h3>
+        <p>Review recovery progress and side-effect notes submitted by patients.</p>
+      </a>
+      <a href="profile.html" class="pt-action-tile">
+        <h3>Doctor Profile</h3>
+        <p>Inspect your qualification, experience, and clinic contact details.</p>
+      </a>
+    </section>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script>
+    var user = requireAuth(["Doctor"]);
+    if (user) {
+      renderNavbar("dashboard.html");
+      document.getElementById("welcomeBanner").textContent = "Welcome, " + user.fullName;
+
+      var docId = user.refId || "DOC-101";
+      var today = getTodayDateString();
+      var consults = getData("consultations").filter(function (c) { return c.doctorId === docId; });
+      var todayList = consults.filter(function (c) { return c.date === today; });
+      var rxs = getData("prescriptions").filter(function (r) { return r.doctorId === docId; });
+      var fbCount = rxs.filter(function (r) { return r.feedback && r.feedback.trim().length > 0; }).length;
+
+      document.getElementById("statToday").textContent = todayList.length;
+      document.getElementById("statTotal").textContent = consults.length;
+      document.getElementById("statRx").textContent = rxs.length;
+      document.getElementById("statFeedback").textContent = fbCount;
+    }
+  </script>
+</body>
+</html>

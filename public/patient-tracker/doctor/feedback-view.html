@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Patient Feedback Viewer — Patient Tracker</title>
+  <link rel="stylesheet" href="doctor.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Patient Recovery &amp; Side-Effect Feedback</h1>
+        <p class="pt-page-subtitle">Review post-visit feedback submitted by patients for your prescriptions.</p>
+      </div>
+    </div>
+
+    <div class="pt-table-wrap">
+      <table class="pt-table">
+        <thead>
+          <tr>
+            <th>Rx Number</th>
+            <th>Patient</th>
+            <th>Date</th>
+            <th>Symptom Tags</th>
+            <th>Patient Feedback</th>
+          </tr>
+        </thead>
+        <tbody id="feedbackViewBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script>
+    var user = requireAuth(["Doctor"]);
+    if (user) {
+      renderNavbar("feedback-view.html");
+      var docId = user.refId || "DOC-101";
+      var patients = getData("patients");
+      var rxs = getData("prescriptions").filter(function (r) {
+        return r.doctorId === docId && r.feedback && r.feedback.trim().length > 0;
+      });
+
+      var tbody = document.getElementById("feedbackViewBody");
+      if (rxs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#64748b; padding:24px;">No patient feedback submitted yet.</td></tr>';
+      } else {
+        tbody.innerHTML = rxs.map(function (r) {
+          var pat = patients.find(function (p) { return p.patientNumber === r.patientNumber; });
+          var tagsText = Array.isArray(r.symptomTags) && r.symptomTags.length > 0 ? r.symptomTags.join(", ") : "—";
+          return (
+            '<tr>' +
+              '<td class="mono">' + escapeHtml(r.prescriptionNumber) + '</td>' +
+              '<td><strong>' + escapeHtml(pat ? pat.name : r.patientNumber) + '</strong> <span class="mono" style="font-size:12px; color:#64748b;">(' + escapeHtml(r.patientNumber) + ')</span></td>' +
+              '<td class="mono">' + escapeHtml(r.feedbackUpdatedAt || r.date) + '</td>' +
+              '<td>' + escapeHtml(tagsText) + '</td>' +
+              '<td>' + escapeHtml(r.feedback) + '</td>' +
+            '</tr>'
+          );
+        }).join("");
+      }
+    }
+  </script>
+</body>
+</html>

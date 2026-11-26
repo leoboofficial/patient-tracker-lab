@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clerk Dashboard — Patient Tracker</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Front-Desk &amp; Pharmacy Console</h1>
+        <p class="pt-page-subtitle">Manage patient admissions, pharmacy stock, and OPD or medicine billing.</p>
+      </div>
+      <a href="add-patient.html" class="pt-btn pt-btn-primary">Register Patient</a>
+    </div>
+
+    <section class="pt-stats-grid">
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Registered Patients</div>
+        <div class="pt-stat-value" id="statPatients">0</div>
+      </div>
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Medicines in Stock</div>
+        <div class="pt-stat-value" id="statMeds">0</div>
+      </div>
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Low Stock Alerts (&lt;10)</div>
+        <div class="pt-stat-value" id="statLowStock" style="color:#dc2626;">0</div>
+      </div>
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Bills Generated</div>
+        <div class="pt-stat-value" id="statBills">0</div>
+      </div>
+    </section>
+
+    <section class="pt-actions-grid">
+      <a href="add-patient.html" class="pt-action-tile">
+        <h3>Register Patient</h3>
+        <p>Check in a new Outpatient (OUT) or Inpatient (IN) with a PAT ID.</p>
+      </a>
+      <a href="patient-list.html" class="pt-action-tile">
+        <h3>Patient Directory</h3>
+        <p>Search registered patients by ID, name, or admission type.</p>
+      </a>
+      <a href="add-medicine.html" class="pt-action-tile">
+        <h3>Add Medicine Stock</h3>
+        <p>Record new medicine batches with quantity, unit price, and expiry date.</p>
+      </a>
+      <a href="stock-list.html" class="pt-action-tile">
+        <h3>Medicine Stock Table</h3>
+        <p>Monitor inventory levels with automatic low-stock highlights.</p>
+      </a>
+      <a href="reg-bill.html" class="pt-action-tile">
+        <h3>Registration / OPD Bill</h3>
+        <p>Calculate outpatient or inpatient admission fees and payment mode.</p>
+      </a>
+      <a href="med-bill.html" class="pt-action-tile">
+        <h3>Pharmacy Medicine Bill</h3>
+        <p>Dispense prescriptions, calculate totals, and settle pharmacy bills.</p>
+      </a>
+    </section>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="session.js"></script>
+  <script src="navbar.js"></script>
+  <script>
+    var user = requireAuth(["Clerk", "Admin"]);
+    if (user) {
+      renderNavbar("clerk-home.html");
+      var meds = getData("medicines");
+      var lowStock = meds.filter(function (m) { return Number(m.quantity) < 10; }).length;
+      document.getElementById("statPatients").textContent = getData("patients").length;
+      document.getElementById("statMeds").textContent = meds.length;
+      document.getElementById("statLowStock").textContent = lowStock;
+      document.getElementById("statBills").textContent = getData("bills").length;
+    }
+  </script>
+</body>
+</html>

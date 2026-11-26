@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Health Feedback — Patient Tracker</title>
+  <link rel="stylesheet" href="patient.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container" style="max-width:760px;">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Health &amp; Side-Effect Feedback</h1>
+        <p class="pt-page-subtitle">Share recovery updates or medication side effects with your consulting doctor.</p>
+      </div>
+      <a href="history.html" class="pt-btn pt-btn-secondary">Back to History</a>
+    </div>
+
+    <div id="alertBox" class="pt-alert" style="display:none;"></div>
+
+    <section class="pt-card">
+      <form id="feedbackForm">
+        <div class="pt-field" style="margin-bottom:18px;">
+          <label for="prescriptionNumber">Select Prescription</label>
+          <select id="prescriptionNumber" required></select>
+        </div>
+
+        <div id="editModeNotice" style="display:none; font-size:12.5px; color:#0f766e; font-weight:600; margin-bottom:12px;">
+          Editing your previously submitted feedback for this prescription.
+        </div>
+
+        <div class="pt-field" style="margin-bottom:16px;">
+          <label>Quick Symptom Tags</label>
+          <div class="symptom-chip-row" id="symptomChips">
+            <button type="button" class="symptom-chip-btn" data-tag="Recovered">Recovered</button>
+            <button type="button" class="symptom-chip-btn" data-tag="Mild Drowsiness">Mild Drowsiness</button>
+            <button type="button" class="symptom-chip-btn" data-tag="Nausea">Nausea</button>
+          </div>
+        </div>
+
+        <div class="pt-field">
+          <label for="feedback">Health / Side-Effect Feedback (max 100 chars)</label>
+          <textarea id="feedback" rows="3" maxlength="100" placeholder="Describe how you feel after taking the prescribed medicines..." required></textarea>
+          <div id="fbCounter" class="doc-char-counter" style="font-size:12px; text-align:right; margin-top:4px; font-family:'JetBrains Mono',monospace;">100 / 100 characters remaining</div>
+        </div>
+
+        <div class="pt-form-actions">
+          <button type="submit" class="pt-btn pt-btn-primary">Submit Feedback</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/alert.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script src="symptom-tags.js"></script>
+  <script src="validate-fb.js"></script>
+  <script src="edit-feedback.js"></script>
+  <script src="save-feedback.js"></script>
+  <script>
+    var user = requireAuth(["Patient"]);
+    if (user) {
+      renderNavbar("feedback.html");
+      var patId = user.refId || "PAT-101";
+      var mine = getData("prescriptions").filter(function (r) { return r.patientNumber === patId; });
+      var sel = document.getElementById("prescriptionNumber");
+
+      sel.innerHTML = '<option value="">-- Select Prescription --</option>' + mine.map(function (r) {
+        return '<option value="' + escapeHtml(r.prescriptionNumber) + '">' +
+          escapeHtml(r.prescriptionNumber + " (" + r.date + ") — " + (r.feedback ? "Submitted" : "Pending")) +
+        '</option>';
+      }).join("");
+
+      var params = new URLSearchParams(window.location.search);
+      var preRx = params.get("rx");
+      if (preRx && mine.some(function (r) { return r.prescriptionNumber === preRx; })) {
+        sel.value = preRx;
+        loadExistingFeedbackIntoForm(preRx);
+      } else if (mine.length > 0) {
+        sel.value = mine[0].prescriptionNumber;
+        loadExistingFeedbackIntoForm(mine[0].prescriptionNumber);
+      }
+
+      sel.addEventListener("change", function () {
+        clearAlert();
+        loadExistingFeedbackIntoForm(this.value);
+      });
+
+      document.getElementById("feedbackForm").addEventListener("submit", function (e) {
+        e.preventDefault();
+        clearAlert();
+
+        var rxNum = sel.value;
+        if (!rxNum) {
+          showError("Please select a Prescription Number.");
+          return;
+        }
+        var check = validateFeedbackText(document.getElementById("feedback").value);
+        if (!check.valid) {
+          showError(check.message);
+          return;
+        }
+
+        var ok = savePatientFeedback(rxNum, check.value, selectedSymptomTags);
+        if (ok) {
+          showSuccess("Feedback saved for " + rxNum + ". Your doctor can now view it.");
+        } else {
+          showError("Could not find the selected prescription.");
+        }
+      });
+    }
+  </script>
+</body>
+</html>

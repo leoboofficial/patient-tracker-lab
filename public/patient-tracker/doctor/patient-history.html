@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Patient History — Patient Tracker</title>
+  <link rel="stylesheet" href="doctor.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Patient Previous Consultations</h1>
+        <p class="pt-page-subtitle">Enter or select a Patient ID to review past diagnoses and prescriptions.</p>
+      </div>
+    </div>
+
+    <div class="pt-toolbar">
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <input type="text" id="historyPatientId" class="pt-search-input" placeholder="Enter Patient ID (e.g., PAT-101)..." />
+        <button type="button" id="btnSearchHistory" class="pt-btn pt-btn-primary">Load History</button>
+      </div>
+    </div>
+
+    <div id="patientSummaryBanner" class="doc-patient-banner" style="display:none; margin-bottom:18px;"></div>
+
+    <div class="pt-table-wrap">
+      <table class="pt-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Consultation ID</th>
+            <th>Doctor ID</th>
+            <th>Problem</th>
+            <th>Notes</th>
+            <th>Rx</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script>
+    var user = requireAuth(["Doctor"]);
+    if (user) {
+      renderNavbar("patient-history.html");
+      loadPatientHistory("");
+    }
+
+    function loadPatientHistory(patId) {
+      var id = patId.trim().toUpperCase();
+      var banner = document.getElementById("patientSummaryBanner");
+      var consults = getData("consultations");
+      var patients = getData("patients");
+
+      if (id) {
+        var pat = patients.find(function (p) { return p.patientNumber.toUpperCase() === id; });
+        if (pat) {
+          banner.style.display = "flex";
+          banner.innerHTML = '<span><strong>' + escapeHtml(pat.name) + '</strong> (' + escapeHtml(pat.patientNumber) + ') · Age ' + escapeHtml(pat.age) + ' · ' + escapeHtml(pat.type) + '</span><span>' + escapeHtml(pat.address) + '</span>';
+        } else {
+          banner.style.display = "none";
+        }
+        consults = consults.filter(function (c) { return c.patientNumber.toUpperCase() === id; });
+      } else {
+        banner.style.display = "none";
+      }
+
+      var tbody = document.getElementById("historyBody");
+      if (consults.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#64748b; padding:24px;">No consultation history found for this Patient ID.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = consults.map(function (c) {
+        return (
+          '<tr>' +
+            '<td class="mono">' + escapeHtml(c.date + " " + c.timeOfVisit) + '</td>' +
+            '<td class="mono">' + escapeHtml(c.consultationId) + '</td>' +
+            '<td class="mono">' + escapeHtml(c.doctorId) + '</td>' +
+            '<td>' + escapeHtml(c.problem) + '</td>' +
+            '<td>' + escapeHtml(c.notes || "—") + '</td>' +
+            '<td>' + (c.prescriptionNumber ? '<a href="print-rx.html?rx=' + encodeURIComponent(c.prescriptionNumber) + '" class="pt-btn pt-btn-secondary pt-btn-sm">' + escapeHtml(c.prescriptionNumber) + '</a>' : "—") + '</td>' +
+          '</tr>'
+        );
+      }).join("");
+    }
+
+    document.getElementById("btnSearchHistory").addEventListener("click", function () {
+      loadPatientHistory(document.getElementById("historyPatientId").value);
+    });
+  </script>
+</body>
+</html>

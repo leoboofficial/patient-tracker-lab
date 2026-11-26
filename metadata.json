@@ -1,0 +1,6 @@
+{
+  "name": "PatientTracker MCA — HTML5, CSS3 & JS Lab Studio",
+  "description": "Browser-based hospital and clinic management web application built with pure HTML5, CSS3, JavaScript, and localStorage JSON stores for the 54-student MCA GitHub lab.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

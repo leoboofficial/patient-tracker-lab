@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registration / OPD Bill — Patient Tracker</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container" style="max-width:860px;">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Registration &amp; OPD Billing</h1>
+        <p class="pt-page-subtitle">Generate hospital registration/admission bills and record payment status.</p>
+      </div>
+    </div>
+
+    <div id="alertBox" class="pt-alert" style="display:none;"></div>
+
+    <section class="pt-card" style="margin-bottom:24px;">
+      <form id="regBillForm">
+        <div class="pt-form-grid">
+          <div class="pt-field">
+            <label for="billNumber">Bill Number</label>
+            <input type="text" id="billNumber" readonly />
+          </div>
+          <div class="pt-field">
+            <label for="patientNumber">Select Patient</label>
+            <select id="patientNumber" required></select>
+          </div>
+          <div class="pt-field">
+            <label for="paymentMode">Payment Mode</label>
+            <select id="paymentMode" required>
+              <option value="Cash">Cash</option>
+              <option value="Card">Card</option>
+            </select>
+          </div>
+          <div class="pt-field" id="cardNumberWrap" style="display:none;">
+            <label for="cardNumber">Card Number (16 digits)</label>
+            <input type="text" id="cardNumber" maxlength="19" placeholder="4532 8910 2341 4242" />
+          </div>
+          <div class="pt-field">
+            <label for="billAmount">Bill Amount (INR)</label>
+            <input type="number" id="billAmount" min="1" step="0.01" value="300" required />
+          </div>
+          <div class="pt-field">
+            <label>Settlement Status</label>
+            <label class="pt-checkbox-label">
+              <input type="checkbox" id="billPaid" checked /> Mark Bill as Paid
+            </label>
+          </div>
+        </div>
+
+        <div class="pt-form-actions">
+          <button type="submit" class="pt-btn pt-btn-primary">Save Registration Bill</button>
+        </div>
+      </form>
+    </section>
+
+    <div class="pt-table-wrap">
+      <table class="pt-table">
+        <thead>
+          <tr>
+            <th>Bill Number</th>
+            <th>Patient ID</th>
+            <th>Date</th>
+            <th>Payment Mode</th>
+            <th>Amount</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="regBillsBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="alert.js"></script>
+  <script src="session.js"></script>
+  <script src="navbar.js"></script>
+  <script>
+    var user = requireAuth(["Clerk", "Admin"]);
+    if (user) {
+      renderNavbar("reg-bill.html");
+      initRegBillPage();
+    }
+
+    function initRegBillPage() {
+      document.getElementById("billNumber").value = getNextId("bills", "BILL");
+      var patients = getData("patients");
+      var sel = document.getElementById("patientNumber");
+      sel.innerHTML = '<option value="">-- Select Patient --</option>' + patients.map(function (p) {
+        return '<option value="' + escapeHtml(p.patientNumber) + '" data-type="' + escapeHtml(p.type) + '">' +
+          escapeHtml(p.patientNumber + " — " + p.name + " (" + p.type + ")") +
+        '</option>';
+      }).join("");
+      renderRegBills();
+    }
+
+    document.getElementById("patientNumber").addEventListener("change", function () {
+      var opt = this.options[this.selectedIndex];
+      var type = opt ? opt.getAttribute("data-type") : "OUT";
+      document.getElementById("billAmount").value = type === "IN" ? 1500 : 300;
+    });
+
+    document.getElementById("paymentMode").addEventListener("change", function () {
+      var isCard = this.value === "Card";
+      document.getElementById("cardNumberWrap").style.display = isCard ? "flex" : "none";
+      document.getElementById("cardNumber").required = isCard;
+    });
+
+    function renderRegBills() {
+      var bills = getData("bills").filter(function (b) { return b.billType === "REG"; });
+      var tbody = document.getElementById("regBillsBody");
+      if (bills.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#64748b; padding:20px;">No registration bills saved yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = bills.slice().reverse().map(function (b) {
+        return (
+          '<tr>' +
+            '<td class="mono">' + escapeHtml(b.billNumber) + '</td>' +
+            '<td class="mono">' + escapeHtml(b.patientNumber) + '</td>' +
+            '<td class="mono">' + escapeHtml(b.date || "-") + '</td>' +
+            '<td>' + escapeHtml(b.paymentMode) + '</td>' +
+            '<td class="tabular">₹' + Number(b.billAmount).toFixed(2) + '</td>' +
+            '<td>' + (b.billPaid ? '<span class="status-text-success">Paid</span>' : '<span class="status-text-warning">Pending</span>') + '</td>' +
+          '</tr>'
+        );
+      }).join("");
+    }
+
+    document.getElementById("regBillForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      clearAlert();
+
+      var billNumber = document.getElementById("billNumber").value.trim();
+      var patientNumber = document.getElementById("patientNumber").value;
+      var paymentMode = document.getElementById("paymentMode").value;
+      var cardNumber = document.getElementById("cardNumber").value.replace(/\s+/g, "");
+      var billAmount = parseFloat(document.getElementById("billAmount").value);
+      var billPaid = document.getElementById("billPaid").checked;
+
+      if (!patientNumber) {
+        showError("Please select a patient.");
+        return;
+      }
+      if (paymentMode === "Card" && !/^\d{12,19}$/.test(cardNumber)) {
+        showError("Please enter a valid 12–19 digit Card Number.");
+        return;
+      }
+
+      var bills = getData("bills");
+      bills.push({
+        billNumber: billNumber,
+        billType: "REG",
+        patientNumber: patientNumber,
+        prescriptionNumber: "",
+        paymentMode: paymentMode,
+        cardNumber: paymentMode === "Card" ? cardNumber : "",
+        billAmount: billAmount,
+        billPaid: billPaid,
+        date: getTodayDateString()
+      });
+      saveData("bills", bills);
+
+      document.getElementById("regBillForm").reset();
+      document.getElementById("cardNumberWrap").style.display = "none";
+      document.getElementById("billAmount").value = 300;
+      document.getElementById("billPaid").checked = true;
+      document.getElementById("billNumber").value = getNextId("bills", "BILL");
+      renderRegBills();
+      showSuccess("Registration Bill " + billNumber + " saved successfully.");
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Today's Visits — Patient Tracker</title>
+  <link rel="stylesheet" href="doctor.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Patients Consulted Today</h1>
+        <p class="pt-page-subtitle">Filter consultations by Date or Patient ID and manage e-prescriptions.</p>
+      </div>
+      <a href="consultation.html" class="pt-btn pt-btn-primary">New Consultation</a>
+    </div>
+
+    <div class="pt-toolbar">
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <input type="date" id="filterDate" class="pt-search-input" style="max-width:180px;" />
+        <input type="text" id="filterPatient" class="pt-search-input" placeholder="Filter by Patient ID (e.g., PAT-101)..." style="max-width:260px;" />
+        <button type="button" id="btnShowAll" class="pt-btn pt-btn-secondary pt-btn-sm">Show All Dates</button>
+      </div>
+      <span id="visitsCountLabel" style="font-size:13px; color:#64748b;"></span>
+    </div>
+
+    <div class="pt-table-wrap">
+      <table class="pt-table">
+        <thead>
+          <tr>
+            <th>Consultation ID</th>
+            <th>Date &amp; Time</th>
+            <th>Patient</th>
+            <th>Problem Description</th>
+            <th>Rx Number</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="todayListBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script src="search-consult.js"></script>
+  <script>
+    var user = requireAuth(["Doctor"]);
+    if (user) {
+      renderNavbar("today-list.html");
+      document.getElementById("filterDate").value = getTodayDateString();
+      renderTodayVisits();
+    }
+
+    function renderTodayVisits() {
+      var docId = user.refId || "DOC-101";
+      var consults = getData("consultations").filter(function (c) { return c.doctorId === docId; });
+      var filtered = filterConsultations(
+        consults,
+        document.getElementById("filterDate").value,
+        document.getElementById("filterPatient").value
+      );
+
+      var patients = getData("patients");
+      var rxs = getData("prescriptions");
+      document.getElementById("visitsCountLabel").textContent = filtered.length + " consultation(s)";
+
+      var tbody = document.getElementById("todayListBody");
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#64748b; padding:24px;">No consultations match the selected filter.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(function (c) {
+        var pat = patients.find(function (p) { return p.patientNumber === c.patientNumber; });
+        var hasRx = rxs.some(function (r) { return r.prescriptionNumber === c.prescriptionNumber; });
+        var rxUrl = "prescription.html?rx=" + encodeURIComponent(c.prescriptionNumber) +
+          "&con=" + encodeURIComponent(c.consultationId) +
+          "&pat=" + encodeURIComponent(c.patientNumber) +
+          "&doc=" + encodeURIComponent(c.doctorId);
+
+        return (
+          '<tr>' +
+            '<td class="mono">' + escapeHtml(c.consultationId) + '</td>' +
+            '<td class="mono">' + escapeHtml(c.date + " " + c.timeOfVisit) + '</td>' +
+            '<td><strong>' + escapeHtml(pat ? pat.name : c.patientNumber) + '</strong> <span class="mono" style="color:#64748b; font-size:12px;">(' + escapeHtml(c.patientNumber) + ')</span></td>' +
+            '<td>' + escapeHtml(c.problem) + '</td>' +
+            '<td class="mono">' + escapeHtml(c.prescriptionNumber || "—") + '</td>' +
+            '<td>' +
+              (hasRx
+                ? '<a href="print-rx.html?rx=' + encodeURIComponent(c.prescriptionNumber) + '" class="pt-btn pt-btn-secondary pt-btn-sm">Print Rx</a>'
+                : '<a href="' + rxUrl + '" class="pt-btn pt-btn-primary pt-btn-sm">Write Rx</a>') +
+            '</td>' +
+          '</tr>'
+        );
+      }).join("");
+    }
+
+    document.getElementById("filterDate").addEventListener("change", renderTodayVisits);
+    document.getElementById("filterPatient").addEventListener("input", renderTodayVisits);
+    document.getElementById("btnShowAll").addEventListener("click", function () {
+      document.getElementById("filterDate").value = "";
+      renderTodayVisits();
+    });
+  </script>
+</body>
+</html>

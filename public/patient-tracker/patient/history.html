@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Consultations — Patient Tracker</title>
+  <link rel="stylesheet" href="patient.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Patient Consultation History</h1>
+        <p class="pt-page-subtitle">Review your past doctor visits, prescriptions, and recovery feedback status.</p>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button type="button" id="btnLoadSampleData" class="pt-btn pt-btn-secondary">Load Sample Data</button>
+        <a href="feedback.html" class="pt-btn pt-btn-primary">Submit Health Feedback</a>
+      </div>
+    </div>
+
+    <div id="patientProfileCard"></div>
+
+    <div class="pt-toolbar">
+      <input type="text" id="searchHistory" class="pt-search-input" placeholder="Filter by Doctor name, Date (YYYY-MM-DD), or symptom..." />
+      <span id="historyCountLabel" style="font-size:13px; color:#64748b;"></span>
+    </div>
+
+    <div id="historyTableContainer"></div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script src="profile-card.js"></script>
+  <script src="filter-history.js"></script>
+  <script src="empty-state.js"></script>
+  <script src="status-badge.js"></script>
+  <script src="seed-data.js"></script>
+  <script>
+    var user = requireAuth(["Patient"]);
+    if (user) {
+      renderNavbar("history.html");
+      var patId = user.refId || "PAT-101";
+      renderPatientProfileCard("patientProfileCard", patId);
+      renderHistory("");
+
+      document.getElementById("searchHistory").addEventListener("input", function (e) {
+        renderHistory(e.target.value);
+      });
+    }
+
+    function renderHistory(query) {
+      var patId = user.refId || "PAT-101";
+      var doctors = getData("doctors");
+      var prescriptions = getData("prescriptions");
+      var mine = getData("consultations").filter(function (c) { return c.patientNumber === patId; });
+      var filtered = filterPatientConsultations(mine, doctors, query);
+
+      document.getElementById("historyCountLabel").textContent = filtered.length + " visit(s)";
+      var container = document.getElementById("historyTableContainer");
+
+      if (mine.length === 0) {
+        renderPatientEmptyState("historyTableContainer");
+        return;
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="pat-empty-card"><p>No visits match your search filter.</p></div>';
+        return;
+      }
+
+      var rowsHtml = filtered.map(function (c) {
+        var doc = doctors.find(function (d) { return d.doctorId === c.doctorId; });
+        var docLabel = doc ? doc.doctorName : c.doctorId;
+        var rxLink = c.prescriptionNumber
+          ? '<a href="rx-details.html?rx=' + encodeURIComponent(c.prescriptionNumber) + '" class="pt-btn pt-btn-secondary pt-btn-sm mono">' + escapeHtml(c.prescriptionNumber) + '</a>'
+          : "—";
+
+        return (
+          '<tr>' +
+            '<td class="mono">' + escapeHtml(c.date + " " + c.timeOfVisit) + '</td>' +
+            '<td class="mono">' + escapeHtml(c.consultationId) + '</td>' +
+            '<td><strong>' + escapeHtml(docLabel) + '</strong></td>' +
+            '<td>' + escapeHtml(c.problem) + '</td>' +
+            '<td>' + rxLink + '</td>' +
+            '<td>' + getFeedbackStatusHtml(c.prescriptionNumber, prescriptions) + '</td>' +
+          '</tr>'
+        );
+      }).join("");
+
+      container.innerHTML =
+        '<div class="pt-table-wrap">' +
+          '<table class="pt-table">' +
+            '<thead><tr><th>Date &amp; Time</th><th>Visit ID</th><th>Consulting Doctor</th><th>Problem</th><th>Prescription</th><th>Feedback Status</th></tr></thead>' +
+            '<tbody>' + rowsHtml + '</tbody>' +
+          '</table>' +
+        '</div>';
+    }
+  </script>
+</body>
+</html>

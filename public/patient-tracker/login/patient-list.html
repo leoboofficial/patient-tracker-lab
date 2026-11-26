@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Patient Directory — Patient Tracker</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Registered Patients</h1>
+        <p class="pt-page-subtitle">Search patients by Patient Number, Name, or Type (IN / OUT).</p>
+      </div>
+      <a href="add-patient.html" class="pt-btn pt-btn-primary">Register Patient</a>
+    </div>
+
+    <div class="pt-toolbar">
+      <input type="text" id="searchPatients" class="pt-search-input" placeholder="Search by PAT ID, Name, Contact, or IN/OUT..." />
+      <span id="patientCountLabel" style="font-size:13px; color:#64748b;"></span>
+    </div>
+
+    <div class="pt-table-wrap">
+      <table class="pt-table">
+        <thead>
+          <tr>
+            <th>Patient Number</th>
+            <th>Patient Name</th>
+            <th>Type</th>
+            <th>Age</th>
+            <th>Contact</th>
+            <th>Home Address</th>
+          </tr>
+        </thead>
+        <tbody id="patientsTableBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="session.js"></script>
+  <script src="navbar.js"></script>
+  <script>
+    var user = requireAuth(["Clerk", "Admin", "Doctor"]);
+    if (user) {
+      renderNavbar("patient-list.html");
+      renderPatients("");
+    }
+
+    function renderPatients(query) {
+      var list = getData("patients");
+      var q = query.trim().toLowerCase();
+      var filtered = list.filter(function (p) {
+        return !q ||
+          p.patientNumber.toLowerCase().indexOf(q) !== -1 ||
+          p.name.toLowerCase().indexOf(q) !== -1 ||
+          p.type.toLowerCase().indexOf(q) !== -1 ||
+          p.contact.indexOf(q) !== -1;
+      });
+
+      document.getElementById("patientCountLabel").textContent = filtered.length + " patient(s) shown";
+      var tbody = document.getElementById("patientsTableBody");
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#64748b; padding:24px;">No matching patients found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(function (p) {
+        return (
+          '<tr>' +
+            '<td class="mono">' + escapeHtml(p.patientNumber) + '</td>' +
+            '<td><strong>' + escapeHtml(p.name) + '</strong></td>' +
+            '<td>' + escapeHtml(p.type === "IN" ? "IN (Inpatient)" : "OUT (Outpatient)") + '</td>' +
+            '<td class="tabular">' + escapeHtml(p.age) + '</td>' +
+            '<td class="mono">' + escapeHtml(p.contact) + '</td>' +
+            '<td>' + escapeHtml(p.address) + '</td>' +
+          '</tr>'
+        );
+      }).join("");
+    }
+
+    document.getElementById("searchPatients").addEventListener("input", function (e) {
+      renderPatients(e.target.value);
+    });
+  </script>
+</body>
+</html>

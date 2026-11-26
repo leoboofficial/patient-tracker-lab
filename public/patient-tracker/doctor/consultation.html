@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Patient Consultation — Patient Tracker</title>
+  <link rel="stylesheet" href="doctor.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container" style="max-width:860px;">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Patient Consultation Entry</h1>
+        <p class="pt-page-subtitle">Look up a registered patient and record clinical findings.</p>
+      </div>
+      <a href="today-list.html" class="pt-btn pt-btn-secondary">Today's Visits</a>
+    </div>
+
+    <div id="alertBox" class="pt-alert" style="display:none;"></div>
+
+    <section class="pt-card">
+      <form id="consultationForm">
+        <div class="pt-form-grid">
+          <div class="pt-field">
+            <label for="consultationId">Consultation ID</label>
+            <input type="text" id="consultationId" readonly />
+          </div>
+          <div class="pt-field">
+            <label for="doctorId">Doctor ID</label>
+            <input type="text" id="doctorId" readonly />
+          </div>
+          <div class="pt-field">
+            <label for="date">Date of Visit</label>
+            <input type="text" id="date" readonly />
+          </div>
+          <div class="pt-field">
+            <label for="timeOfVisit">Time of Visit (24-hr)</label>
+            <input type="text" id="timeOfVisit" readonly />
+          </div>
+          <div class="pt-field full">
+            <label for="patientNumber">Patient Number</label>
+            <div style="display:flex; gap:10px;">
+              <input type="text" id="patientNumber" placeholder="Enter Patient ID (e.g., PAT-101)" required style="flex:1;" />
+              <button type="button" id="btnLookupPatient" class="pt-btn pt-btn-secondary">Lookup Patient</button>
+            </div>
+            <div id="patientLookupResult" class="doc-patient-banner" style="display:none;"></div>
+          </div>
+          <div class="pt-field full">
+            <label for="problem">Problem Description (max 100 chars)</label>
+            <textarea id="problem" rows="2" maxlength="100" placeholder="Describe primary symptoms and diagnosis..." required></textarea>
+            <div id="problemCounter" class="doc-char-counter">100 / 100 characters remaining</div>
+          </div>
+          <div class="pt-field full">
+            <label for="notes">Additional Clinical Notes (optional, max 100 chars)</label>
+            <textarea id="notes" rows="2" maxlength="100" placeholder="Observations, hydration advice, or follow-up plan..."></textarea>
+            <div id="notesCounter" class="doc-char-counter">100 / 100 characters remaining</div>
+          </div>
+        </div>
+
+        <div class="pt-form-actions">
+          <button type="submit" class="pt-btn pt-btn-primary">Save Consultation &amp; Generate Rx Link</button>
+        </div>
+      </form>
+
+      <div id="rxLinkContainer"></div>
+    </section>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/alert.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script src="lookup.js"></script>
+  <script src="timestamp.js"></script>
+  <script src="char-count.js"></script>
+  <script src="rx-link.js"></script>
+  <script src="save-consult.js"></script>
+  <script>
+    var user = requireAuth(["Doctor"]);
+    if (user) renderNavbar("consultation.html");
+  </script>
+</body>
+</html>

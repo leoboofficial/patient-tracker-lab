@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — Patient Tracker</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Administrator Overview</h1>
+        <p class="pt-page-subtitle">Manage medical staff, front-desk clerks, and hospital roster totals.</p>
+      </div>
+      <a href="add-doctor.html" class="pt-btn pt-btn-primary">Register Doctor</a>
+    </div>
+
+    <section class="pt-stats-grid">
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Registered Doctors</div>
+        <div class="pt-stat-value" id="countDoctors">0</div>
+      </div>
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Front-Desk Clerks</div>
+        <div class="pt-stat-value" id="countClerks">0</div>
+      </div>
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Total Patients</div>
+        <div class="pt-stat-value" id="countPatients">0</div>
+      </div>
+      <div class="pt-stat-card">
+        <div class="pt-stat-label">Consultations Logged</div>
+        <div class="pt-stat-value" id="countConsults">0</div>
+      </div>
+    </section>
+
+    <section class="pt-actions-grid">
+      <a href="add-doctor.html" class="pt-action-tile">
+        <h3>Register New Doctor</h3>
+        <p>Create a doctor profile with auto-generated DOC ID and login access.</p>
+      </a>
+      <a href="doctor-list.html" class="pt-action-tile">
+        <h3>Doctor Directory</h3>
+        <p>Search and review qualifications, experience, and contact numbers.</p>
+      </a>
+      <a href="add-clerk.html" class="pt-action-tile">
+        <h3>Register New Clerk</h3>
+        <p>Onboard front-desk and pharmacy clerks with joining date and ID.</p>
+      </a>
+      <a href="clerk-list.html" class="pt-action-tile">
+        <h3>Clerk Directory</h3>
+        <p>View, edit, or remove registered front-desk clerk records.</p>
+      </a>
+    </section>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="session.js"></script>
+  <script src="navbar.js"></script>
+  <script>
+    var user = requireAuth(["Admin"]);
+    if (user) {
+      renderNavbar("admin-home.html");
+      document.getElementById("countDoctors").textContent = getData("doctors").length;
+      document.getElementById("countClerks").textContent = getData("clerks").length;
+      document.getElementById("countPatients").textContent = getData("patients").length;
+      document.getElementById("countConsults").textContent = getData("consultations").length;
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prescription Details — Patient Tracker</title>
+  <link rel="stylesheet" href="patient.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container" style="max-width:860px;">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Prescription Details</h1>
+        <p class="pt-page-subtitle">Prescribed medicines, total quantities, and doctor dosage instructions.</p>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <a href="history.html" class="pt-btn pt-btn-secondary">Back to History</a>
+        <a href="dosage-list.html" class="pt-btn pt-btn-primary">Daily Dosage Schedule</a>
+      </div>
+    </div>
+
+    <section class="pt-card" id="rxDetailsRoot"></section>
+  </main>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../login/session.js"></script>
+  <script src="../login/navbar.js"></script>
+  <script>
+    var user = requireAuth(["Patient"]);
+    if (user) {
+      renderNavbar("rx-details.html");
+      var patId = user.refId || "PAT-101";
+      var params = new URLSearchParams(window.location.search);
+      var rxParam = params.get("rx");
+      var mine = getData("prescriptions").filter(function (r) { return r.patientNumber === patId; });
+      var rx = rxParam ? mine.find(function (r) { return r.prescriptionNumber === rxParam; }) : mine[0];
+
+      var root = document.getElementById("rxDetailsRoot");
+      if (!rx) {
+        root.innerHTML = '<p style="color:#64748b;">No prescription details found for your account.</p>';
+      } else {
+        var doc = getData("doctors").find(function (d) { return d.doctorId === rx.doctorId; });
+        var rowsHtml = rx.items.map(function (item) {
+          return (
+            '<tr>' +
+              '<td class="mono">' + escapeHtml(item.medicineId) + '</td>' +
+              '<td><strong>' + escapeHtml(item.medicineName) + '</strong></td>' +
+              '<td class="tabular">' + escapeHtml(item.quantity) + '</td>' +
+              '<td>' + escapeHtml(item.instructions) + '</td>' +
+            '</tr>'
+          );
+        }).join("");
+
+        root.innerHTML =
+          '<div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid #e2e8f0;">' +
+            '<div><span style="color:#64748b; font-size:12.5px;">Prescription No.</span><div class="mono" style="font-size:18px; font-weight:700;">' + escapeHtml(rx.prescriptionNumber) + '</div></div>' +
+            '<div><span style="color:#64748b; font-size:12.5px;">Consulting Doctor</span><div style="font-weight:600;">' + escapeHtml(doc ? doc.doctorName : rx.doctorId) + '</div></div>' +
+            '<div><span style="color:#64748b; font-size:12.5px;">Issued Date</span><div class="mono">' + escapeHtml(rx.date) + '</div></div>' +
+          '</div>' +
+          '<div class="pt-table-wrap" style="margin-bottom:16px;">' +
+            '<table class="pt-table">' +
+              '<thead><tr><th>Med ID</th><th>Medicine</th><th>Quantity</th><th>Dosage Instructions</th></tr></thead>' +
+              '<tbody>' + rowsHtml + '</tbody>' +
+            '</table>' +
+          '</div>' +
+          '<div style="font-size:13.5px; color:#334155;"><strong>Doctor Notes:</strong> ' + escapeHtml(rx.notes || "Take medicines after food unless stated otherwise.") + '</div>' +
+          '<div style="margin-top:18px;">' +
+            '<a href="feedback.html?rx=' + encodeURIComponent(rx.prescriptionNumber) + '" class="pt-btn pt-btn-primary">Give Feedback on this Prescription</a>' +
+          '</div>';
+      }
+    }
+  </script>
+</body>
+</html>

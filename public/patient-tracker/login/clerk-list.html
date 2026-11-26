@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clerk Directory — Patient Tracker</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+  <div id="navbarRoot"></div>
+
+  <main class="pt-container">
+    <div class="pt-page-header">
+      <div>
+        <h1 class="pt-page-title">Registered Clerks</h1>
+        <p class="pt-page-subtitle">Manage front-desk staff records with edit and delete controls.</p>
+      </div>
+      <a href="add-clerk.html" class="pt-btn pt-btn-primary">Add Clerk</a>
+    </div>
+
+    <div id="alertBox" class="pt-alert" style="display:none;"></div>
+
+    <div class="pt-table-wrap">
+      <table class="pt-table">
+        <thead>
+          <tr>
+            <th>Clerk ID</th>
+            <th>Clerk Name</th>
+            <th>Age</th>
+            <th>Phone</th>
+            <th>Date of Joining</th>
+            <th>Address</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="clerksTableBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <div id="editModal" class="pt-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+    <div class="pt-modal">
+      <div class="pt-modal-header">
+        <h2 id="editModalTitle" style="font-size:18px;">Edit Clerk Record</h2>
+        <button type="button" class="pt-btn pt-btn-secondary pt-btn-sm" id="closeModalBtn">Close</button>
+      </div>
+      <form id="editClerkForm">
+        <input type="hidden" id="editClerkId" />
+        <div class="pt-form-grid">
+          <div class="pt-field full">
+            <label for="editClerkName">Clerk Name</label>
+            <input type="text" id="editClerkName" maxlength="50" required />
+          </div>
+          <div class="pt-field">
+            <label for="editAge">Age</label>
+            <input type="number" id="editAge" min="18" max="65" required />
+          </div>
+          <div class="pt-field">
+            <label for="editContact">Phone</label>
+            <input type="tel" id="editContact" pattern="[0-9]{10}" maxlength="10" required />
+          </div>
+          <div class="pt-field full">
+            <label for="editAddress">Address</label>
+            <textarea id="editAddress" rows="2" maxlength="50" required></textarea>
+          </div>
+        </div>
+        <div class="pt-form-actions">
+          <button type="submit" class="pt-btn pt-btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="../shared/storage.js"></script>
+  <script src="alert.js"></script>
+  <script src="session.js"></script>
+  <script src="navbar.js"></script>
+  <script>
+    var user = requireAuth(["Admin"]);
+    if (user) {
+      renderNavbar("clerk-list.html");
+      renderClerks();
+    }
+
+    function renderClerks() {
+      var list = getData("clerks");
+      var tbody = document.getElementById("clerksTableBody");
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b; padding:24px;">No clerk records available.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = list.map(function (c) {
+        return (
+          '<tr>' +
+            '<td class="mono">' + escapeHtml(c.clerkId) + '</td>' +
+            '<td><strong>' + escapeHtml(c.clerkName) + '</strong></td>' +
+            '<td class="tabular">' + escapeHtml(c.age) + '</td>' +
+            '<td class="mono">' + escapeHtml(c.contact) + '</td>' +
+            '<td class="mono">' + escapeHtml(c.clerkDOJ) + '</td>' +
+            '<td>' + escapeHtml(c.address) + '</td>' +
+            '<td>' +
+              '<div style="display:flex; gap:8px;">' +
+                '<button type="button" class="pt-btn pt-btn-secondary pt-btn-sm" onclick="openEditClerk(\'' + escapeHtml(c.clerkId) + '\')">Edit</button>' +
+                '<button type="button" class="pt-btn pt-btn-danger pt-btn-sm" onclick="deleteClerk(\'' + escapeHtml(c.clerkId) + '\')">Delete</button>' +
+              '</div>' +
+            '</td>' +
+          '</tr>'
+        );
+      }).join("");
+    }
+
+    window.openEditClerk = function (clerkId) {
+      var list = getData("clerks");
+      var item = list.find(function (c) { return c.clerkId === clerkId; });
+      if (!item) return;
+      document.getElementById("editClerkId").value = item.clerkId;
+      document.getElementById("editClerkName").value = item.clerkName;
+      document.getElementById("editAge").value = item.age;
+      document.getElementById("editContact").value = item.contact;
+      document.getElementById("editAddress").value = item.address;
+      document.getElementById("editModal").classList.add("open");
+    };
+
+    window.deleteClerk = function (clerkId) {
+      var list = getData("clerks").filter(function (c) { return c.clerkId !== clerkId; });
+      saveData("clerks", list);
+      renderClerks();
+      showSuccess("Clerk " + clerkId + " removed.");
+    };
+
+    document.getElementById("closeModalBtn").addEventListener("click", function () {
+      document.getElementById("editModal").classList.remove("open");
+    });
+
+    document.getElementById("editClerkForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var id = document.getElementById("editClerkId").value;
+      var list = getData("clerks");
+      var idx = list.findIndex(function (c) { return c.clerkId === id; });
+      if (idx !== -1) {
+        list[idx].clerkName = document.getElementById("editClerkName").value.trim();
+        list[idx].age = parseInt(document.getElementById("editAge").value, 10);
+        list[idx].contact = document.getElementById("editContact").value.trim();
+        list[idx].address = document.getElementById("editAddress").value.trim();
+        saveData("clerks", list);
+      }
+      document.getElementById("editModal").classList.remove("open");
+      renderClerks();
+      showSuccess("Clerk " + id + " updated.");
+    });
+  </script>
+</body>
+</html>
