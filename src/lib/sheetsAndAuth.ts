@@ -220,7 +220,13 @@ export async function verifyStudentWithSheetOrLocal(
       if (res.ok) {
         const data = (await res.json()) as {
           found?: boolean;
-          student?: { Email?: string; RegNo?: string; Name?: string; Department?: string };
+          student?: {
+            Email?: string;
+            RegNo?: string;
+            Name?: string;
+            Department?: string;
+            RollNo?: number;
+          };
         };
         if (!data.found || !data.student) {
           return null;
@@ -231,7 +237,11 @@ export async function verifyStudentWithSheetOrLocal(
             s.email.toLowerCase() === cleanEmail ||
             s.regNo.toUpperCase() === cleanReg
         );
-        const fallbackTask = TASKS_54[0];
+        const sheetRoll = Number(data.student.RollNo);
+        const fallbackTask =
+          (!isNaN(sheetRoll) && sheetRoll >= 1
+            ? TASKS_54[(sheetRoll - 1) % TASKS_54.length]
+            : undefined) || TASKS_54[0];
         return {
           email: data.student.Email || cleanEmail,
           regNo: data.student.RegNo || cleanReg,
@@ -256,6 +266,186 @@ export async function verifyStudentWithSheetOrLocal(
         s.regNo.toUpperCase() === cleanReg
     ) || null
   );
+}
+
+export interface SheetRosterSyncResult {
+  synced: boolean;
+  count: number;
+  roster: StudentRecord[];
+  needsScriptUpdate?: boolean;
+  message: string;
+}
+
+export async function syncRosterFromGoogleSheet(
+  appsScriptUrl: string
+): Promise<SheetRosterSyncResult> {
+  const cleanUrl = appsScriptUrl.trim();
+  if (!cleanUrl) {
+    return {
+      synced: false,
+      count: 0,
+      roster: loadStudentRoster(),
+      message: 'Enter a Google Apps Script Web App URL to sync students.',
+    };
+  }
+
+  const sep = cleanUrl.includes('?') ? '&' : '?';
+  const res = await fetch(`${cleanUrl}${sep}action=listStudents`);
+  if (!res.ok) {
+    throw new Error(`Google Sheet request failed (${res.status}).`);
+  }
+
+  const data = (await res.json()) as {
+    ok?: boolean;
+    students?: Array<{
+      rowIndex?: number;
+      Email?: string;
+      RegNo?: string;
+      Name?: string;
+      Department?: string;
+      RollNo?: number;
+    }>;
+  };
+
+  if (!Array.isArray(data.students)) {
+    return {
+      synced: false,
+      count: 0,
+      roster: loadStudentRoster(),
+      needsScriptUpdate: true,
+      message:
+        'Connected to Google Apps Script, but it does not yet include the listStudents endpoint. Update your Apps Script from the code below, deploy a New Version, and click Sync from Google Sheet.',
+    };
+  }
+
+  const existingRoster = loadStudentRoster();
+  const mapped: StudentRecord[] = [];
+
+  data.students.forEach((row, idx) => {
+    const email = String(row.Email || '').trim().toLowerCase();
+    const regNo = String(row.RegNo || '').trim().toUpperCase();
+    if (!email && !regNo) return;
+
+    const prev = existingRoster.find(
+      (s) =>
+        (email && s.email.toLowerCase() === email) ||
+        (regNo && s.regNo.toUpperCase() === regNo)
+    );
+
+    const parsedRoll = Number(row.RollNo || row.rowIndex || idx + 1);
+    const targetRoll = prev?.rollNo || (!isNaN(parsedRoll) && parsedRoll >= 1 ? parsedRoll : idx + 1);
+    const task = TASKS_54[(targetRoll - 1) % TASKS_54.length] || TASKS_54[idx % TASKS_54.length];
+
+    mapped.push({
+      email,
+      regNo,
+      name: String(row.Name || prev?.name || `Student ${idx + 1}`).trim(),
+      department: String(row.Department || prev?.department || 'MCA').trim(),
+      rollNo: task.rollNo,
+      exerciseTitle: `Ex ${task.rollLabel}: ${task.summary}`,
+      moduleBranch: task.moduleBranch,
+      branchName: task.branchName,
+      filePath: task.filePath,
+    });
+  });
+
+  if (mapped.length === 0) {
+    return {
+      synced: false,
+      count: 0,
+      roster: existingRoster,
+      message: 'The students tab in your Google Sheet appears empty.',
+    };
+  }
+
+  saveStudentRoster(mapped);
+  return {
+    synced: true,
+    count: mapped.length,
+    roster: mapped,
+    message: `Synced ${mapped.length} student(s) from Google Sheet and mapped them to lab exercises.`,
+  };
+}
+
+export async function syncSubmissionsFromGoogleSheet(
+  appsScriptUrl: string
+): Promise<SubmissionRecord[]> {
+  const cleanUrl = appsScriptUrl.trim();
+  const localSubs = loadSubmissions();
+  if (!cleanUrl) return localSubs;
+
+  try {
+    const sep = cleanUrl.includes('?') ? '&' : '?';
+    const res = await fetch(`${cleanUrl}${sep}action=listSubmissions`);
+    if (!res.ok) return localSubs;
+    const data = (await res.json()) as {
+      submissions?: Array<{
+        Timestamp?: string;
+        OfficialEmail?: string;
+        RegNo?: string;
+        StudentName?: string;
+        ExerciseTitle?: string;
+        Status?: string;
+        SourceCode?: string;
+      }>;
+    };
+    if (!Array.isArray(data.submissions)) return localSubs;
+
+    const roster = loadStudentRoster();
+    const repoUrl = loadLabSettings().repoUrl;
+    const merged = [...localSubs];
+
+    for (const row of data.submissions) {
+      const email = String(row.OfficialEmail || '').trim().toLowerCase();
+      const regNo = String(row.RegNo || '').trim().toUpperCase();
+      if (!email && !regNo) continue;
+
+      const existingIdx = merged.findIndex(
+        (s) =>
+          s.officialEmail.toLowerCase() === email &&
+          s.regNo.toUpperCase() === regNo &&
+          s.exerciseTitle === String(row.ExerciseTitle || '')
+      );
+      if (existingIdx !== -1) continue;
+
+      const studentMatch = roster.find(
+        (s) => s.email.toLowerCase() === email || s.regNo.toUpperCase() === regNo
+      );
+
+      merged.push({
+        id: `sheet_${regNo}_${Date.parse(String(row.Timestamp || '')) || merged.length}`,
+        timestamp: String(row.Timestamp || new Date().toISOString()),
+        officialEmail: email,
+        regNo,
+        studentName: String(row.StudentName || studentMatch?.name || 'Student'),
+        department: studentMatch?.department || 'MCA',
+        exerciseTitle: String(row.ExerciseTitle || studentMatch?.exerciseTitle || ''),
+        branchName: studentMatch?.branchName || 'main',
+        filePath: studentMatch?.filePath || 'login/index.html',
+        repoUrl,
+        status:
+          row.Status === 'Evaluated' || row.Status === 'Needs Revision'
+            ? row.Status
+            : 'Submitted',
+        sourceCode: String(row.SourceCode || ''),
+        rubric: {
+          repoAndGitignore: 0,
+          conventionalCommits: 0,
+          branchingAndConflicts: 0,
+          prsAndCodeReview: 0,
+          ciPipeline: 0,
+          workingPageAndViva: 0,
+        },
+        totalMarks: 0,
+        facultyRemarks: '',
+      });
+    }
+
+    saveSubmissions(merged);
+    return merged;
+  } catch {
+    return localSubs;
+  }
 }
 
 export async function recordSubmissionToSheetAndLocal(
@@ -338,11 +528,54 @@ export const APPS_SCRIPT_TEMPLATE = `function doGet(e) {
           String(rows[i][1]).toUpperCase().trim() === regNo) {
         return ContentService.createTextOutput(JSON.stringify({
           found: true,
-          student: { Email: rows[i][0], RegNo: rows[i][1], Name: rows[i][2], Department: rows[i][3] }
+          student: {
+            Email: rows[i][0],
+            RegNo: rows[i][1],
+            Name: rows[i][2],
+            Department: rows[i][3],
+            RollNo: rows[i][4] ? Number(rows[i][4]) : i
+          }
         })).setMimeType(ContentService.MimeType.JSON);
       }
     }
     return ContentService.createTextOutput(JSON.stringify({ found: false }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  if (action === "listStudents") {
+    var sheet = ss.getSheetByName("students");
+    var rows = sheet.getDataRange().getValues();
+    var students = [];
+    for (var i = 1; i < rows.length; i++) {
+      if (!rows[i][0] && !rows[i][1]) continue;
+      students.push({
+        rowIndex: i,
+        Email: String(rows[i][0] || "").trim(),
+        RegNo: String(rows[i][1] || "").trim(),
+        Name: String(rows[i][2] || "").trim(),
+        Department: String(rows[i][3] || "MCA").trim(),
+        RollNo: rows[i][4] ? Number(rows[i][4]) : i
+      });
+    }
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, students: students }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  if (action === "listSubmissions") {
+    var subSheet = ss.getSheetByName("submission");
+    var subRows = subSheet ? subSheet.getDataRange().getValues() : [];
+    var submissions = [];
+    for (var j = 1; j < subRows.length; j++) {
+      if (!subRows[j][1] && !subRows[j][2]) continue;
+      submissions.push({
+        Timestamp: String(subRows[j][0] || ""),
+        OfficialEmail: String(subRows[j][1] || ""),
+        RegNo: String(subRows[j][2] || ""),
+        StudentName: String(subRows[j][3] || ""),
+        ExerciseTitle: String(subRows[j][4] || ""),
+        Status: String(subRows[j][5] || "Submitted"),
+        SourceCode: String(subRows[j][6] || "")
+      });
+    }
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, submissions: submissions }))
       .setMimeType(ContentService.MimeType.JSON);
   }
   return ContentService.createTextOutput(JSON.stringify({ ok: true }))

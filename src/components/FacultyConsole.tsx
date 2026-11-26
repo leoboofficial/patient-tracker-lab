@@ -64,6 +64,8 @@ import {
   saveSubmissions,
   sendFacultyOtp,
   sha256Hex,
+  syncRosterFromGoogleSheet,
+  syncSubmissionsFromGoogleSheet,
   updateFacultyPassword,
 } from '@/src/lib/sheetsAndAuth';
 import { LabManualModal } from '@/src/components/LabManualModal';
@@ -143,6 +145,7 @@ export const FacultyConsole: React.FC<Props> = ({
   const [ghBranches, setGhBranches] = useState<GitHubBranchInfo[]>([]);
   const [ghPrs, setGhPrs] = useState<GitHubPullRequest[]>([]);
   const [busy, setBusy] = useState(false);
+  const [sheetSyncBusy, setSheetSyncBusy] = useState(false);
   const [progressText, setProgressText] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
@@ -158,8 +161,72 @@ export const FacultyConsole: React.FC<Props> = ({
     loadAllReferenceFiles().then(setRefFilesCache).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (githubConfig?.owner && githubConfig?.repo) {
+      const nextUrl = `https://github.com/${githubConfig.owner}/${githubConfig.repo}`;
+      setRepoUrlInput((prev) => {
+        const parsedPrev = parseGitHubRepoUrl(prev);
+        if (
+          parsedPrev &&
+          parsedPrev.owner === githubConfig.owner &&
+          parsedPrev.repo === githubConfig.repo
+        ) {
+          return prev;
+        }
+        return nextUrl;
+      });
+    }
+  }, [githubConfig?.owner, githubConfig?.repo]);
+
+  async function handleSyncFromSheet(
+    scriptUrlOverride?: string,
+    options?: { quietIfNeedsScriptUpdate?: boolean }
+  ) {
+    const targetUrl = (scriptUrlOverride ?? appsScriptInput ?? loadLabSettings().appsScriptUrl).trim();
+    if (!targetUrl) {
+      if (!options?.quietIfNeedsScriptUpdate) {
+        setStatusMsg({
+          type: 'error',
+          text: 'Enter and save your Google Apps Script Web App URL in 1. Repo & Sheet Setup first.',
+        });
+      }
+      return;
+    }
+    setSheetSyncBusy(true);
+    try {
+      const [rosterResult, syncedSubs] = await Promise.all([
+        syncRosterFromGoogleSheet(targetUrl),
+        syncSubmissionsFromGoogleSheet(targetUrl),
+      ]);
+      setSubmissions(syncedSubs);
+      if (rosterResult.synced) {
+        setRoster(rosterResult.roster);
+        setStatusMsg({
+          type: 'success',
+          text: `Saved & synced ${rosterResult.count} student(s) from Google Sheet.`,
+        });
+      } else if (!options?.quietIfNeedsScriptUpdate || rosterResult.needsScriptUpdate) {
+        setStatusMsg({
+          type: 'error',
+          text: rosterResult.message,
+        });
+      }
+    } catch (err) {
+      setStatusMsg({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Unable to sync from Google Sheet.',
+      });
+    } finally {
+      setSheetSyncBusy(false);
+    }
+  }
+
   async function refreshRepoData() {
     setSubmissions(loadSubmissions());
+    const savedScriptUrl = loadLabSettings().appsScriptUrl;
+    if (savedScriptUrl) {
+      await handleSyncFromSheet(savedScriptUrl, { quietIfNeedsScriptUpdate: true });
+    }
     if (githubConfig) {
       try {
         const [branches, prs] = await Promise.all([
@@ -283,33 +350,59 @@ export const FacultyConsole: React.FC<Props> = ({
     });
   }
 
-  function handleSaveSettings(e: React.FormEvent) {
+  async function handleSaveSettings(e: React.FormEvent) {
     e.preventDefault();
+    const cleanedRepo = repoUrlInput.trim();
+    const cleanedScript = appsScriptInput.trim();
+    const parsed = parseGitHubRepoUrl(cleanedRepo);
+    const normalizedRepo = parsed
+      ? `https://github.com/${parsed.owner}/${parsed.repo}`
+      : cleanedRepo;
+
     saveLabSettings({
-      repoUrl: repoUrlInput.trim(),
-      appsScriptUrl: appsScriptInput.trim(),
+      repoUrl: normalizedRepo,
+      appsScriptUrl: cleanedScript,
     });
-    const parsed = parseGitHubRepoUrl(repoUrlInput);
-    if (parsed && (!githubConfig || githubConfig.owner !== parsed.owner || githubConfig.repo !== parsed.repo)) {
+    setRepoUrlInput(normalizedRepo);
+
+    if (
+      parsed &&
+      (!githubConfig ||
+        githubConfig.owner !== parsed.owner ||
+        githubConfig.repo !== parsed.repo)
+    ) {
       onConnectGitHub({
         owner: parsed.owner,
         repo: parsed.repo,
         token: githubConfig?.token || '',
       });
     }
-    setStatusMsg({
-      type: 'success',
-      text: 'Saved Repository Link and Google Apps Script configuration.',
-    });
+
+    if (cleanedScript) {
+      await handleSyncFromSheet(cleanedScript);
+    } else {
+      setStatusMsg({
+        type: 'success',
+        text: 'Saved GitHub Repository Link and Google Apps Script configuration. Students will see this repository link automatically after login.',
+      });
+    }
   }
 
   function getStudentPortalUrl(): string {
     const base = `${window.location.origin}${window.location.pathname}#/student`;
+    const params = new URLSearchParams();
     const parsed = parseGitHubRepoUrl(repoUrlInput);
     if (parsed) {
-      return `${base}?owner=${encodeURIComponent(parsed.owner)}&repo=${encodeURIComponent(parsed.repo)}`;
+      params.set('owner', parsed.owner);
+      params.set('repo', parsed.repo);
+    } else if (repoUrlInput.trim()) {
+      params.set('repoUrl', repoUrlInput.trim());
     }
-    return base;
+    if (appsScriptInput.trim()) {
+      params.set('sheet', appsScriptInput.trim());
+    }
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
   }
 
   async function handleInitializeStarterRepo() {
@@ -1216,10 +1309,22 @@ export const FacultyConsole: React.FC<Props> = ({
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <button
                   type="submit"
-                  className="rounded-lg bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800"
+                  disabled={sheetSyncBusy}
+                  className="rounded-lg bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
                 >
-                  Save Lab Settings
+                  {sheetSyncBusy ? 'Saving & Syncing Sheet...' : 'Save Lab Settings'}
                 </button>
+                {appsScriptInput.trim() && (
+                  <button
+                    type="button"
+                    disabled={sheetSyncBusy}
+                    onClick={() => handleSyncFromSheet(appsScriptInput)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3.5 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100 disabled:opacity-60"
+                  >
+                    <FileSpreadsheet className="h-3.5 w-3.5" />
+                    {sheetSyncBusy ? 'Syncing...' : 'Sync Students from Sheet'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -1351,13 +1456,24 @@ export const FacultyConsole: React.FC<Props> = ({
               <h2 className="text-sm font-bold text-slate-900">
                 Add Student &amp; Map Exercise / Branch
               </h2>
-              <button
-                type="button"
-                onClick={() => setShowBulkImport((v) => !v)}
-                className="text-xs font-semibold text-teal-800 underline"
-              >
-                {showBulkImport ? 'Hide Bulk CSV Import' : 'Bulk Paste CSV (Email, RegNo, Name, Department)'}
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={sheetSyncBusy}
+                  onClick={() => handleSyncFromSheet()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-100 disabled:opacity-60"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  {sheetSyncBusy ? 'Syncing Sheet...' : 'Sync from Google Sheet'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkImport((v) => !v)}
+                  className="text-xs font-semibold text-teal-800 underline"
+                >
+                  {showBulkImport ? 'Hide Bulk CSV Import' : 'Bulk Paste CSV (Email, RegNo, Name, Department)'}
+                </button>
+              </div>
             </div>
 
             {showBulkImport && (

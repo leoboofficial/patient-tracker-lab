@@ -110,7 +110,27 @@ export function serializeAssignmentsForRepo(assignments: StudentAssignment[]): s
   return JSON.stringify(compact, null, 2) + '\n';
 }
 
+const BUILTIN_REFERENCE_FILES: Record<string, string> = {
+  '.gitignore': `.DS_Store
+.vscode/
+*.tmp
+`,
+  '.github/workflows/ci.yml': `name: Beginner HTML and JS Check
+on: [pull_request]
+jobs:
+  verify-submission:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: List submitted project files
+        run: ls -R
+`,
+};
+
 export async function fetchReferenceFile(path: string): Promise<string> {
+  if (BUILTIN_REFERENCE_FILES[path]) {
+    return BUILTIN_REFERENCE_FILES[path];
+  }
   const res = await fetch(`./patient-tracker/${path}`);
   if (!res.ok) {
     throw new Error(`Unable to read ./patient-tracker/${path}`);

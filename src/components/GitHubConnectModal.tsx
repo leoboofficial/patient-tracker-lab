@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, GitBranch, CheckCircle2, AlertCircle } from 'lucide-react';
 import {
   GitHubConfig,
   createGitHubRepo,
   verifyRepoAccess,
 } from '@/src/lib/githubClient';
+import { loadLabSettings, parseGitHubRepoUrl } from '@/src/lib/sheetsAndAuth';
 
 interface Props {
   open: boolean;
@@ -22,23 +23,52 @@ export const GitHubConnectModal: React.FC<Props> = ({
   onDisconnect,
 }) => {
   const [mode, setMode] = useState<'existing' | 'create'>('existing');
-  const [owner, setOwner] = useState(config?.owner || '');
-  const [repo, setRepo] = useState(config?.repo || 'PatientTracker-MCA');
+  const [repoUrl, setRepoUrl] = useState(() => {
+    if (config?.owner && config?.repo) {
+      return `https://github.com/${config.owner}/${config.repo}`;
+    }
+    return loadLabSettings().repoUrl || '';
+  });
+  const [newRepoName, setNewRepoName] = useState(config?.repo || 'PatientTracker-MCA');
   const [token, setToken] = useState(config?.token || '');
   const [isPrivate, setIsPrivate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (!open) return;
+    if (config?.owner && config?.repo) {
+      setRepoUrl(`https://github.com/${config.owner}/${config.repo}`);
+      setNewRepoName(config.repo);
+    } else {
+      const savedUrl = loadLabSettings().repoUrl;
+      if (savedUrl) {
+        setRepoUrl(savedUrl);
+      }
+    }
+    if (config?.token) {
+      setToken(config.token);
+    }
+    setError('');
+  }, [open, config]);
+
   if (!open) return null;
+
+  const parsedExisting = parseGitHubRepoUrl(repoUrl);
 
   async function handleConnectExisting(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    const parsed = parseGitHubRepoUrl(repoUrl);
+    if (!parsed) {
+      setError('Enter a valid GitHub Repository URL (e.g., https://github.com/username/repo or username/repo).');
+      return;
+    }
     setLoading(true);
     try {
       const cfg: GitHubConfig = {
-        owner: owner.trim(),
-        repo: repo.trim(),
+        owner: parsed.owner,
+        repo: parsed.repo,
         token: token.trim(),
       };
       const meta = await verifyRepoAccess(cfg);
@@ -65,7 +95,7 @@ export const GitHubConnectModal: React.FC<Props> = ({
     }
     setLoading(true);
     try {
-      const created = await createGitHubRepo(token.trim(), repo.trim(), isPrivate);
+      const created = await createGitHubRepo(token.trim(), newRepoName.trim(), isPrivate);
       const cfg: GitHubConfig = {
         owner: created.owner,
         repo: created.repo,
@@ -143,35 +173,29 @@ export const GitHubConnectModal: React.FC<Props> = ({
 
         {mode === 'existing' ? (
           <form onSubmit={handleConnectExisting} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700" htmlFor="ghOwner">
-                  GitHub Username / Org
-                </label>
-                <input
-                  id="ghOwner"
-                  type="text"
-                  required
-                  value={owner}
-                  onChange={(e) => setOwner(e.target.value)}
-                  placeholder="e.g., faculty-mca"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-700 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700" htmlFor="ghRepo">
-                  Repository Name
-                </label>
-                <input
-                  id="ghRepo"
-                  type="text"
-                  required
-                  value={repo}
-                  onChange={(e) => setRepo(e.target.value)}
-                  placeholder="PatientTracker-MCA"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-700 focus:outline-none"
-                />
-              </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-700" htmlFor="ghRepoUrl">
+                GitHub Repository URL
+              </label>
+              <input
+                id="ghRepoUrl"
+                type="text"
+                required
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/username/PatientTracker-MCA"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-700 focus:outline-none"
+              />
+              {parsedExisting ? (
+                <p className="mt-1 text-xs text-teal-800">
+                  Detected Owner: <strong className="font-mono">{parsedExisting.owner}</strong> · Repository:{' '}
+                  <strong className="font-mono">{parsedExisting.repo}</strong>
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">
+                  Paste the full GitHub repository URL (or <span className="font-mono">owner/repo</span>) — username and repository name are extracted automatically.
+                </p>
+              )}
             </div>
 
             <div>
@@ -223,8 +247,8 @@ export const GitHubConnectModal: React.FC<Props> = ({
                 id="newRepoName"
                 type="text"
                 required
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
+                value={newRepoName}
+                onChange={(e) => setNewRepoName(e.target.value)}
                 placeholder="PatientTracker-MCA"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-700 focus:outline-none"
               />

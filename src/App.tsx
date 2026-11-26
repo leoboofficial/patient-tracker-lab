@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { GitHubConfig } from '@/src/lib/githubClient';
+import { loadLabSettings, saveLabSettings } from '@/src/lib/sheetsAndAuth';
 import { StudentWorkbench } from '@/src/components/StudentWorkbench';
 import { FacultyConsole } from '@/src/components/FacultyConsole';
 import { GitHubConnectModal } from '@/src/components/GitHubConnectModal';
@@ -16,6 +17,8 @@ interface ParsedHash {
   rollNo: number | null;
   owner: string;
   repo: string;
+  sheet: string;
+  repoUrl: string;
 }
 
 function parseHash(hash: string): ParsedHash {
@@ -36,18 +39,38 @@ function parseHash(hash: string): ParsedHash {
     rollNo,
     owner: params.get('owner') || '',
     repo: params.get('repo') || '',
+    sheet: params.get('sheet') || '',
+    repoUrl: params.get('repoUrl') || '',
   };
+}
+
+function syncSettingsFromHash(parsed: ParsedHash): void {
+  if (typeof window === 'undefined') return;
+  const existing = loadLabSettings();
+  const nextRepoUrl =
+    parsed.owner && parsed.repo
+      ? `https://github.com/${parsed.owner}/${parsed.repo}`
+      : parsed.repoUrl || existing.repoUrl;
+  const nextSheet = parsed.sheet || existing.appsScriptUrl;
+  if (nextRepoUrl !== existing.repoUrl || nextSheet !== existing.appsScriptUrl) {
+    saveLabSettings({
+      repoUrl: nextRepoUrl,
+      appsScriptUrl: nextSheet,
+    });
+  }
 }
 
 export default function App() {
   const [parsed, setParsed] = useState<ParsedHash>(() => {
     if (typeof window === 'undefined') {
-      return { route: 'student', rollNo: null, owner: '', repo: '' };
+      return { route: 'student', rollNo: null, owner: '', repo: '', sheet: '', repoUrl: '' };
     }
     if (!window.location.hash) {
       window.location.hash = '#/student';
     }
-    return parseHash(window.location.hash);
+    const init = parseHash(window.location.hash);
+    syncSettingsFromHash(init);
+    return init;
   });
 
   const [githubConfig, setGithubConfig] = useState<GitHubConfig | null>(() => {
@@ -65,6 +88,7 @@ export default function App() {
   useEffect(() => {
     function handleHashChange() {
       const next = parseHash(window.location.hash);
+      syncSettingsFromHash(next);
       setParsed(next);
       if (next.owner && next.repo) {
         setGithubConfig((prev) =>
@@ -126,7 +150,16 @@ export default function App() {
         open={ghModalOpen}
         onClose={() => setGhModalOpen(false)}
         config={githubConfig}
-        onConnect={(cfg) => setGithubConfig(cfg)}
+        onConnect={(cfg) => {
+          setGithubConfig(cfg);
+          if (parsed.route === 'faculty') {
+            const existing = loadLabSettings();
+            saveLabSettings({
+              ...existing,
+              repoUrl: `https://github.com/${cfg.owner}/${cfg.repo}`,
+            });
+          }
+        }}
         onDisconnect={() => setGithubConfig(null)}
       />
     </div>

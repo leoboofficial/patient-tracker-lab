@@ -63,7 +63,13 @@ export const StudentWorkbench: React.FC<Props> = ({
   onOpenGitHubModal,
   onAuthChange,
 }) => {
-  const settings = useMemo(() => loadLabSettings(), []);
+  const resolveFacultyRepoUrl = (cfg: GitHubConfig | null): string => {
+    if (cfg?.owner && cfg?.repo) {
+      return `https://github.com/${cfg.owner}/${cfg.repo}`;
+    }
+    const latest = loadLabSettings();
+    return latest.repoUrl || 'https://github.com/faculty/PatientTracker-MCA';
+  };
 
   // Step 1: Student Login state (Official Email + Reg No — no PIN)
   const [emailInput, setEmailInput] = useState('');
@@ -73,12 +79,7 @@ export const StudentWorkbench: React.FC<Props> = ({
   const [student, setStudent] = useState<StudentRecord | null>(null);
 
   // Step 2: Clone Repository state
-  const [repoUrlInput, setRepoUrlInput] = useState(() => {
-    if (githubConfig) {
-      return `https://github.com/${githubConfig.owner}/${githubConfig.repo}`;
-    }
-    return settings.repoUrl || 'https://github.com/faculty/PatientTracker-MCA';
-  });
+  const [repoUrlInput, setRepoUrlInput] = useState(() => resolveFacultyRepoUrl(githubConfig));
   const [studentTokenInput, setStudentTokenInput] = useState(githubConfig?.token || '');
   const [cloned, setCloned] = useState(false);
   const [cloneBusy, setCloneBusy] = useState(false);
@@ -140,13 +141,11 @@ export const StudentWorkbench: React.FC<Props> = ({
     onAuthChange?.(Boolean(student));
   }, [student, onAuthChange]);
 
-  // If URL carries ?owner=&repo=, keep repo URL synced
+  // Keep faculty repository link synced from URL params, connected repo, or faculty-saved settings
   useEffect(() => {
-    if (githubConfig) {
-      setRepoUrlInput(`https://github.com/${githubConfig.owner}/${githubConfig.repo}`);
-      if (githubConfig.token && !studentTokenInput) {
-        setStudentTokenInput(githubConfig.token);
-      }
+    setRepoUrlInput(resolveFacultyRepoUrl(githubConfig));
+    if (githubConfig?.token && !studentTokenInput) {
+      setStudentTokenInput(githubConfig.token);
     }
   }, [githubConfig]);
 
@@ -161,16 +160,18 @@ export const StudentWorkbench: React.FC<Props> = ({
     setLoginError('');
     setLoginBusy(true);
     try {
+      const latestSettings = loadLabSettings();
       const verified = await verifyStudentWithSheetOrLocal(
         emailInput,
         regNoInput,
-        loadLabSettings().appsScriptUrl
+        latestSettings.appsScriptUrl
       );
       if (!verified) {
         setLoginError('Account not found. Please contact your faculty.');
         return;
       }
       setStudent(verified);
+      setRepoUrlInput(resolveFacultyRepoUrl(githubConfig));
       setCloned(false);
       setBanner(null);
 
@@ -609,6 +610,46 @@ export const StudentWorkbench: React.FC<Props> = ({
     }
   }
 
+  function blockClipboardAction(e: React.SyntheticEvent, label: string) {
+    e.preventDefault();
+    setBanner({
+      type: 'error',
+      text: `${label} is disabled in the student code editor. Type your code manually.`,
+    });
+  }
+
+  function handleEditorKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    const key = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && (key === 'v' || key === 'c' || key === 'x')) {
+      e.preventDefault();
+      setBanner({
+        type: 'error',
+        text: 'Copy, cut, and paste shortcuts are disabled in the student code editor.',
+      });
+    } else if (e.shiftKey && key === 'insert') {
+      e.preventDefault();
+      setBanner({
+        type: 'error',
+        text: 'Pasting is disabled in the student code editor.',
+      });
+    }
+  }
+
+  function handleEditorBeforeInput(e: React.FormEvent<HTMLTextAreaElement>) {
+    const native = e.nativeEvent as InputEvent;
+    if (
+      native?.inputType === 'insertFromPaste' ||
+      native?.inputType === 'insertFromDrop' ||
+      native?.inputType === 'deleteByCut'
+    ) {
+      e.preventDefault();
+      setBanner({
+        type: 'error',
+        text: 'Copy, cut, and paste are disabled in the student code editor.',
+      });
+    }
+  }
+
   // STEP 1: Student Login (Official Email + Reg No)
   if (!student) {
     return (
@@ -733,18 +774,27 @@ export const StudentWorkbench: React.FC<Props> = ({
 
           <form onSubmit={handleCloneRepository} className="mt-5 space-y-4">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-700" htmlFor="cloneRepoUrl">
-                Faculty GitHub Repository Link
-              </label>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="block text-xs font-semibold text-slate-700" htmlFor="cloneRepoUrl">
+                  Faculty GitHub Repository Link
+                </label>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                  Read-Only
+                </span>
+              </div>
               <input
                 id="cloneRepoUrl"
                 type="text"
                 required
+                readOnly
+                aria-readonly="true"
                 value={repoUrlInput}
-                onChange={(e) => setRepoUrlInput(e.target.value)}
                 placeholder="https://github.com/faculty/PatientTracker-MCA"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs focus:border-teal-700 focus:outline-none"
+                className="w-full cursor-not-allowed rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 font-mono text-xs text-slate-700 focus:outline-none"
               />
+              <p className="mt-1 text-[11px] text-slate-500">
+                Automatically populated from your faculty&apos;s repository settings (read-only). Only your GitHub PAT is required below.
+              </p>
             </div>
 
             <div>
@@ -964,6 +1014,9 @@ export const StudentWorkbench: React.FC<Props> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium text-slate-500">
+                Copy/Paste Disabled
+              </span>
               {activeTab === 'assigned' && (
                 <button
                   type="button"
@@ -991,6 +1044,13 @@ export const StudentWorkbench: React.FC<Props> = ({
               <textarea
                 value={assignedCode}
                 onChange={(e) => setAssignedCode(e.target.value)}
+                onCopy={(e) => blockClipboardAction(e, 'Copying')}
+                onCut={(e) => blockClipboardAction(e, 'Cutting')}
+                onPaste={(e) => blockClipboardAction(e, 'Pasting')}
+                onDrop={(e) => blockClipboardAction(e, 'Drag & drop')}
+                onContextMenu={(e) => e.preventDefault()}
+                onKeyDown={handleEditorKeyDown}
+                onBeforeInput={handleEditorBeforeInput}
                 spellCheck={false}
                 aria-label="Assigned file code editor"
                 className="h-[430px] w-full resize-none border-0 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100 focus:outline-none"
@@ -1000,13 +1060,25 @@ export const StudentWorkbench: React.FC<Props> = ({
               <textarea
                 value={contributorsText}
                 onChange={(e) => setContributorsText(e.target.value)}
+                onCopy={(e) => blockClipboardAction(e, 'Copying')}
+                onCut={(e) => blockClipboardAction(e, 'Cutting')}
+                onPaste={(e) => blockClipboardAction(e, 'Pasting')}
+                onDrop={(e) => blockClipboardAction(e, 'Drag & drop')}
+                onContextMenu={(e) => e.preventDefault()}
+                onKeyDown={handleEditorKeyDown}
+                onBeforeInput={handleEditorBeforeInput}
                 spellCheck={false}
                 aria-label="CONTRIBUTORS.txt editor"
                 className="h-[430px] w-full resize-none border-0 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100 focus:outline-none"
               />
             )}
             {activeTab === 'storage-ref' && (
-              <pre className="h-[430px] overflow-auto bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-300">
+              <pre
+                onCopy={(e) => blockClipboardAction(e, 'Copying')}
+                onCut={(e) => blockClipboardAction(e, 'Cutting')}
+                onContextMenu={(e) => e.preventDefault()}
+                className="h-[430px] select-none overflow-auto bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-300"
+              >
                 <code>{storageRefCode}</code>
               </pre>
             )}
