@@ -11,6 +11,7 @@ import {
   GitBranch,
   GitCommitHorizontal,
   GitPullRequest,
+  Lock,
   LogOut,
   Play,
   RotateCcw,
@@ -58,7 +59,7 @@ interface Props {
   onAuthChange?: (loggedIn: boolean) => void;
 }
 
-type EditorTab = 'assigned' | 'contributors' | 'storage-ref';
+type EditorTab = 'assigned' | 'storage-ref';
 
 export const StudentWorkbench: React.FC<Props> = ({
   urlRollNo,
@@ -121,6 +122,8 @@ export const StudentWorkbench: React.FC<Props> = ({
   const [showPdfReport, setShowPdfReport] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [showFieldGuide, setShowFieldGuide] = useState(true);
+  const [rollEntryInput, setRollEntryInput] = useState('');
+  const [sandboxTested, setSandboxTested] = useState(false);
 
   const taskMeta = useMemo(() => {
     if (!student) return null;
@@ -178,6 +181,8 @@ export const StudentWorkbench: React.FC<Props> = ({
       setStudent(verified);
       setRepoUrlInput(resolveFacultyRepoUrl(githubConfig));
       setCloned(false);
+      setRollEntryInput('');
+      setSandboxTested(false);
       setBanner(null);
 
       const folder = verified.filePath.split('/')[0];
@@ -242,6 +247,8 @@ export const StudentWorkbench: React.FC<Props> = ({
         );
         setClonedContribSha(remoteContrib?.sha || '');
         setBranchReady(hasPersonal);
+        setSandboxTested(false);
+        setActiveTab('assigned');
         setCloned(true);
         setBanner({
           type: 'success',
@@ -270,6 +277,8 @@ export const StudentWorkbench: React.FC<Props> = ({
         setClonedFileSha(branchTree[student.filePath] || '');
         setClonedContribSha(branchTree['CONTRIBUTORS.txt'] || '');
         setBranchReady(hasPersonal);
+        setSandboxTested(false);
+        setActiveTab('assigned');
         setCloned(true);
         setBanner({
           type: 'info',
@@ -291,13 +300,37 @@ export const StudentWorkbench: React.FC<Props> = ({
     return buildSandboxedPreviewHtml(student.filePath, assignedCode, repoFiles, previewRole);
   }, [student, assignedCode, repoFiles, previewRole, previewKey]);
 
-  function appendContributorLine() {
+  function appendContributorLine(e?: React.FormEvent) {
+    if (e) e.preventDefault();
     if (!student) return;
-    const line = `${student.regNo} | ${student.name} | ${student.filePath}`;
+    const entered = rollEntryInput.trim();
+    if (!entered) {
+      setBanner({
+        type: 'error',
+        text: 'Please enter your Roll Number or RegNo before adding to CONTRIBUTORS.txt.',
+      });
+      return;
+    }
+    const line =
+      entered.toUpperCase() === student.regNo.toUpperCase()
+        ? `${student.regNo} | ${student.name} | ${student.filePath}`
+        : `Roll ${entered} | ${student.regNo} | ${student.name} | ${student.filePath}`;
     if (!contributorsText.toLowerCase().includes(student.regNo.toLowerCase())) {
       setContributorsText((prev) => `${prev.trimEnd()}\n${line}\n`);
     }
-    setActiveTab('contributors');
+    setBanner({
+      type: 'success',
+      text: `Added your Roll No (${entered}) and RegNo (${student.regNo}) to CONTRIBUTORS.txt.`,
+    });
+  }
+
+  function runLocalSandboxTest() {
+    setPreviewKey((k) => k + 1);
+    setSandboxTested(true);
+    setBanner({
+      type: 'success',
+      text: 'Local Sandbox output refreshed and verified. You can now push your changes to GitHub.',
+    });
   }
 
   async function saveSubmissionRecord(sourceCodeSnapshot: string) {
@@ -337,6 +370,22 @@ export const StudentWorkbench: React.FC<Props> = ({
     forceRemoteSha?: string;
   }) {
     if (!student) return;
+    if (!options?.overrideTarget) {
+      if (!contributorsText.toLowerCase().includes(student.regNo.toLowerCase())) {
+        setBanner({
+          type: 'error',
+          text: 'Step 2 required: Add your Roll Number to CONTRIBUTORS.txt before pushing to GitHub.',
+        });
+        return;
+      }
+      if (!sandboxTested) {
+        setBanner({
+          type: 'error',
+          text: 'Step 3 required: Click "Run & Verify in Local Sandbox" to test your output before pushing.',
+        });
+        return;
+      }
+    }
     const fullMsg = `${commitType}: ${commitSummary.trim()}`;
     if (!isConventionalCommit(fullMsg)) {
       setBanner({
@@ -1023,54 +1072,37 @@ export const StudentWorkbench: React.FC<Props> = ({
                 }`}
               >
                 <FileCode2 className="h-3.5 w-3.5" />
-                {student.filePath}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('contributors')}
-                className={`rounded-md px-3 py-1.5 font-mono text-xs font-semibold ${
-                  activeTab === 'contributors'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                CONTRIBUTORS.txt
+                Step 1: {student.filePath}
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('storage-ref')}
-                className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 font-mono text-xs font-semibold ${
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-mono text-xs font-semibold ${
                   activeTab === 'storage-ref'
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <BookOpen className="h-3.5 w-3.5" />
-                shared/storage.js
+                <Lock className="h-3.5 w-3.5 text-slate-500" />
+                shared/storage.js (Read-Only)
               </button>
             </div>
 
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-medium text-slate-500">
-                Copy/Paste Disabled
+                {activeTab === 'assigned' ? 'Copy/Paste Disabled' : 'Locked Reference File'}
               </span>
               {activeTab === 'assigned' && (
                 <button
                   type="button"
-                  onClick={() => setAssignedCode(taskMeta?.starterCode || '')}
+                  onClick={() => {
+                    setAssignedCode(taskMeta?.starterCode || '');
+                    setSandboxTested(false);
+                  }}
                   className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   <RotateCcw className="h-3 w-3" />
                   Reset Starter
-                </button>
-              )}
-              {activeTab === 'contributors' && (
-                <button
-                  type="button"
-                  onClick={appendContributorLine}
-                  className="rounded-md border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800 hover:bg-teal-100"
-                >
-                  + Add My RegNo
                 </button>
               )}
             </div>
@@ -1080,7 +1112,10 @@ export const StudentWorkbench: React.FC<Props> = ({
             {activeTab === 'assigned' && (
               <textarea
                 value={assignedCode}
-                onChange={(e) => setAssignedCode(e.target.value)}
+                onChange={(e) => {
+                  setAssignedCode(e.target.value);
+                  setSandboxTested(false);
+                }}
                 onCopy={(e) => blockClipboardAction(e, 'Copying')}
                 onCut={(e) => blockClipboardAction(e, 'Cutting')}
                 onPaste={(e) => blockClipboardAction(e, 'Pasting')}
@@ -1090,108 +1125,171 @@ export const StudentWorkbench: React.FC<Props> = ({
                 onBeforeInput={handleEditorBeforeInput}
                 spellCheck={false}
                 aria-label="Assigned file code editor"
-                className="h-[430px] w-full resize-none border-0 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100 focus:outline-none"
-              />
-            )}
-            {activeTab === 'contributors' && (
-              <textarea
-                value={contributorsText}
-                onChange={(e) => setContributorsText(e.target.value)}
-                onCopy={(e) => blockClipboardAction(e, 'Copying')}
-                onCut={(e) => blockClipboardAction(e, 'Cutting')}
-                onPaste={(e) => blockClipboardAction(e, 'Pasting')}
-                onDrop={(e) => blockClipboardAction(e, 'Drag & drop')}
-                onContextMenu={(e) => e.preventDefault()}
-                onKeyDown={handleEditorKeyDown}
-                onBeforeInput={handleEditorBeforeInput}
-                spellCheck={false}
-                aria-label="CONTRIBUTORS.txt editor"
-                className="h-[430px] w-full resize-none border-0 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100 focus:outline-none"
+                className="h-[380px] w-full resize-none border-0 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100 focus:outline-none"
               />
             )}
             {activeTab === 'storage-ref' && (
-              <pre
-                onCopy={(e) => blockClipboardAction(e, 'Copying')}
-                onCut={(e) => blockClipboardAction(e, 'Cutting')}
-                onContextMenu={(e) => e.preventDefault()}
-                className="h-[430px] select-none overflow-auto bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-300"
-              >
-                <code>{storageRefCode}</code>
-              </pre>
+              <div className="flex h-[380px] flex-col bg-slate-950">
+                <div className="flex items-center gap-2 border-b border-slate-800 bg-slate-900 px-4 py-2 text-[11px] font-medium text-amber-300">
+                  <Lock className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Read-Only Reference — shared/storage.js is locked by faculty and cannot be edited or pushed by students.
+                  </span>
+                </div>
+                <pre
+                  onCopy={(e) => blockClipboardAction(e, 'Copying')}
+                  onCut={(e) => blockClipboardAction(e, 'Cutting')}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="flex-1 select-none overflow-auto p-4 font-mono text-xs leading-relaxed text-slate-300"
+                >
+                  <code>{storageRefCode}</code>
+                </pre>
+              </div>
             )}
           </div>
 
-          <div className="border-t border-slate-200 bg-slate-50 p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="flex flex-wrap items-center gap-4 text-slate-600">
-                <span>
-                  Branch:{' '}
-                  <strong className={branchReady ? 'text-emerald-700' : 'text-slate-900'}>
-                    {student.branchName}
-                  </strong>
-                </span>
-                <span>
-                  CONTRIBUTORS.txt:{' '}
-                  <strong className={hasContribEntry ? 'text-emerald-700' : 'text-amber-700'}>
-                    {hasContribEntry ? 'RegNo added' : 'Add your RegNo'}
-                  </strong>
+          {/* Sequential Steps 2, 3, and 4 */}
+          <div className="space-y-4 border-t border-slate-200 bg-slate-50 p-4">
+            {/* Step 2: Add Roll Number to CONTRIBUTORS.txt */}
+            <div className="rounded-lg border border-slate-200 bg-white p-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-bold text-slate-900">
+                  Step 2: Add Your Roll Number to <span className="font-mono">CONTRIBUTORS.txt</span>
+                </div>
+                <span
+                  className={`rounded px-2 py-0.5 text-[11px] font-semibold ${
+                    hasContribEntry
+                      ? 'bg-emerald-50 text-emerald-800'
+                      : 'bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  {hasContribEntry ? 'Added to CONTRIBUTORS.txt' : 'Pending'}
                 </span>
               </div>
-              {!hasContribEntry && (
+
+              {!hasContribEntry ? (
+                <form onSubmit={appendContributorLine} className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <input
+                    id="contribRollInput"
+                    type="text"
+                    value={rollEntryInput}
+                    onChange={(e) => setRollEntryInput(e.target.value)}
+                    placeholder={`Enter Roll No / RegNo (e.g., ${String(student.rollNo).padStart(2, '0')} or ${student.regNo})`}
+                    className="min-w-[220px] flex-1 rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs focus:border-teal-700 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-teal-700 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-teal-800"
+                  >
+                    Add Roll No to CONTRIBUTORS.txt
+                  </button>
+                </form>
+              ) : (
+                <p className="mt-1.5 text-[11px] text-slate-600">
+                  Your entry (<span className="font-mono font-semibold text-slate-800">{student.regNo}</span>) is locked into <span className="font-mono">CONTRIBUTORS.txt</span> and will be included with your push.
+                </p>
+              )}
+
+              <pre className="mt-2.5 max-h-24 overflow-auto rounded border border-slate-200 bg-slate-950 p-2.5 font-mono text-[11px] text-slate-300">
+                <code>{contributorsText}</code>
+              </pre>
+            </div>
+
+            {/* Step 3: Verify Output in Local Sandbox */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3.5">
+              <div>
+                <div className="text-xs font-bold text-slate-900">
+                  Step 3: Test &amp; Verify Output in Local Sandbox
+                </div>
+                <p className="mt-0.5 text-[11px] text-slate-600">
+                  Run your code in the Live Output panel on the right and confirm it works before pushing to GitHub.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {sandboxTested && (
+                  <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Output Verified
+                  </span>
+                )}
                 <button
                   type="button"
-                  onClick={appendContributorLine}
-                  className="text-xs font-semibold text-teal-800 underline"
+                  onClick={runLocalSandboxTest}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-teal-700 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-100"
                 >
-                  Auto-add to CONTRIBUTORS.txt
+                  <Play className="h-3.5 w-3.5" />
+                  {sandboxTested ? 'Re-run Local Sandbox' : 'Run & Verify in Local Sandbox'}
                 </button>
+              </div>
+            </div>
+
+            {/* Step 4: Commit & Push to GitHub */}
+            <div className="rounded-lg border border-slate-200 bg-white p-3.5">
+              <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-slate-900">
+                  Step 4: Commit &amp; Push to GitHub (<span className="font-mono text-teal-800">{student.branchName}</span>)
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  Branch status:{' '}
+                  <strong className={branchReady ? 'text-emerald-700' : 'text-slate-800'}>
+                    {branchReady ? 'Ready' : 'Created on first push'}
+                  </strong>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
+                <div className="sm:col-span-3">
+                  <select
+                    value={commitType}
+                    onChange={(e) => setCommitType(e.target.value as 'feat' | 'fix' | 'style')}
+                    aria-label="Conventional commit prefix"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 font-mono text-xs font-semibold text-slate-900"
+                  >
+                    <option value="feat">feat:</option>
+                    <option value="fix">fix:</option>
+                    <option value="style">style:</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-9">
+                  <input
+                    type="text"
+                    value={commitSummary}
+                    onChange={(e) => setCommitSummary(e.target.value)}
+                    placeholder="describe your change..."
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-teal-700 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {(!hasContribEntry || !sandboxTested) && (
+                <p className="mt-2 text-[11px] font-medium text-amber-700">
+                  Complete {!hasContribEntry ? 'Step 2 (Add Roll No to CONTRIBUTORS.txt)' : ''}
+                  {!hasContribEntry && !sandboxTested ? ' and ' : ''}
+                  {!sandboxTested ? 'Step 3 (Run & Verify in Local Sandbox)' : ''} to unlock Push.
+                </p>
               )}
-            </div>
 
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
-              <div className="sm:col-span-3">
-                <select
-                  value={commitType}
-                  onChange={(e) => setCommitType(e.target.value as 'feat' | 'fix' | 'style')}
-                  aria-label="Conventional commit prefix"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 font-mono text-xs font-semibold text-slate-900"
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2.5">
+                <button
+                  type="button"
+                  disabled={busy || !hasContribEntry || !sandboxTested}
+                  onClick={() => executePush()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <option value="feat">feat:</option>
-                  <option value="fix">fix:</option>
-                  <option value="style">style:</option>
-                </select>
-              </div>
-              <div className="sm:col-span-9">
-                <input
-                  type="text"
-                  value={commitSummary}
-                  onChange={(e) => setCommitSummary(e.target.value)}
-                  placeholder="describe your change..."
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-teal-700 focus:outline-none"
-                />
-              </div>
-            </div>
+                  <GitCommitHorizontal className="h-3.5 w-3.5" />
+                  {busy ? 'Pushing...' : `Push to ${student.branchName}`}
+                </button>
 
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2.5">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => executePush()}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
-              >
-                <GitCommitHorizontal className="h-3.5 w-3.5" />
-                {busy ? 'Pushing...' : `Push to ${student.branchName}`}
-              </button>
-
-              <button
-                type="button"
-                disabled={busy}
-                onClick={handleOpenPullRequest}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              >
-                <GitPullRequest className="h-3.5 w-3.5" />
-                Open PR → {student.moduleBranch}
-              </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={handleOpenPullRequest}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                >
+                  <GitPullRequest className="h-3.5 w-3.5" />
+                  Open PR → {student.moduleBranch}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1199,7 +1297,7 @@ export const StudentWorkbench: React.FC<Props> = ({
         <div className="flex flex-col rounded-xl border border-slate-200 bg-white lg:col-span-5">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-2.5">
             <div className="text-xs font-semibold text-slate-800">
-              Live Output · <span className="font-mono text-slate-500">{student.filePath}</span>
+              Live Output (Local Sandbox) · <span className="font-mono text-slate-500">{student.filePath}</span>
             </div>
             <div className="flex items-center gap-2">
               <select
@@ -1217,7 +1315,7 @@ export const StudentWorkbench: React.FC<Props> = ({
               </select>
               <button
                 type="button"
-                onClick={() => setPreviewKey((k) => k + 1)}
+                onClick={runLocalSandboxTest}
                 className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
                 <Play className="h-3 w-3" />
@@ -1231,7 +1329,7 @@ export const StudentWorkbench: React.FC<Props> = ({
             srcDoc={previewHtml}
             sandbox="allow-scripts allow-forms"
             title="Live HTML CSS JS Student Preview"
-            className="h-[570px] w-full flex-1 rounded-b-xl border-0 bg-slate-50"
+            className="h-[680px] w-full flex-1 rounded-b-xl border-0 bg-slate-50"
           />
         </div>
       </div>
