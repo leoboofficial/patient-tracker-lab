@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import JSZip from 'jszip';
 import {
   AlertCircle,
+  BookOpen,
   Check,
   CheckCircle2,
   ClipboardCheck,
@@ -65,6 +66,7 @@ import {
   sha256Hex,
   updateFacultyPassword,
 } from '@/src/lib/sheetsAndAuth';
+import { LabManualModal } from '@/src/components/LabManualModal';
 
 interface Props {
   githubConfig: GitHubConfig | null;
@@ -146,6 +148,7 @@ export const FacultyConsole: React.FC<Props> = ({
     null
   );
   const [activeTab, setActiveTab] = useState<FacultyTab>('setup');
+  const [manualOpen, setManualOpen] = useState(false);
 
   useEffect(() => {
     getFacultyAuth().then((cfg) => {
@@ -962,6 +965,14 @@ export const FacultyConsole: React.FC<Props> = ({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
+            onClick={() => setManualOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            Manual (PDF)
+          </button>
+          <button
+            type="button"
             onClick={() => {
               setChangePassOpen((v) => !v);
               setChangePassMsg(null);
@@ -1355,7 +1366,7 @@ export const FacultyConsole: React.FC<Props> = ({
                   rows={4}
                   value={bulkCsvText}
                   onChange={(e) => setBulkCsvText(e.target.value)}
-                  placeholder={'ananya.mca@college.edu, 24MCA001, Ananya Sharma, MCA\nkarthik.mca@college.edu, 24MCA002, Karthik Verma, MCA'}
+                  placeholder={'26SP216XXXX@student.hindustanuiv.ac.in, 26SP216XXXX, Ananya Sharma, MCA\n26SP217XXXX@student.hindustanuiv.ac.in, 26SP217XXXX, Karthik Verma, MCA\n26SP218XXXX@student.hindustanuiv.ac.in, 26SP218XXXX, Priya Nair, MCA'}
                   className="w-full rounded-lg border border-slate-300 bg-white p-2.5 font-mono text-xs"
                 />
                 <button
@@ -1374,7 +1385,7 @@ export const FacultyConsole: React.FC<Props> = ({
                 required
                 value={newStudentEmail}
                 onChange={(e) => setNewStudentEmail(e.target.value)}
-                placeholder="Official Email"
+                placeholder="26SP216XXXX@student.hindustanuiv.ac.in"
                 className="rounded-lg border border-slate-300 px-3 py-2 text-xs sm:col-span-3"
               />
               <input
@@ -1382,7 +1393,7 @@ export const FacultyConsole: React.FC<Props> = ({
                 required
                 value={newStudentRegNo}
                 onChange={(e) => setNewStudentRegNo(e.target.value)}
-                placeholder="RegNo (e.g. 24MCA004)"
+                placeholder="RegNo (26SP216XXXX / 26SP217XXXX / 26SP218XXXX)"
                 className="rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs uppercase sm:col-span-2"
               />
               <input
@@ -1794,6 +1805,12 @@ export const FacultyConsole: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      <LabManualModal
+        open={manualOpen}
+        role="faculty"
+        onClose={() => setManualOpen(false)}
+      />
     </div>
   );
 };

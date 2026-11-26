@@ -1,0 +1,167 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 5265 >>
+stream
+0.06 0.46 0.43 rg 48 700 499 62 re f
+BT /F2 16 Tf 1.000 1.000 1.000 rg 62.0 738.0 Td (GitHub Personal Access Token \(PAT\) Setup Guide) Tj ET
+BT /F1 9.5 Tf 0.850 0.960 0.940 rg 62.0 716.0 Td (Step-by-Step Instructions for Faculty \(#/faculty\) and Students \(#/student\)) Tj ET
+0.94 0.97 0.97 rg 48 666.0 499 24 re f
+0.06 0.46 0.43 rg 48 666.0 4 24 re f
+BT /F2 11.5 Tf 0.060 0.090 0.160 rg 60.0 674.0 Td (PART 1: FACULTY PAT SETUP \(CLASSIC TOKEN\)) Tj ET
+BT /F2 8.8 Tf 0.060 0.460 0.430 rg 435.0 675.0 Td (Route: #/faculty) Tj ET
+0.06 0.09 0.16 rg 48 645.0 44 15 re f
+BT /F2 8 Tf 1.000 1.000 1.000 rg 53.0 649.0 Td (STEP 01) Tj ET
+BT /F2 10.5 Tf 0.060 0.090 0.160 rg 100.0 649.0 Td (Create the Central Lab Repository on GitHub \(If Not Created Yet\)) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 630.0 Td (- Sign in to your Faculty GitHub account at https://github.com.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 617.0 Td (- Option A: Create an empty repository manually \(e.g., PatientTracker-MCA\) with 'Add a) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 604.0 Td (  README file' checked so 'main' branch exists.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 591.0 Td (- Option B: Let the Faculty Console create it for you using the 'Create New Faculty) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 578.0 Td (  Repo' tab in 'Connect GitHub Repo' \(requires Classic PAT\).) Tj ET
+0.06 0.09 0.16 rg 48 556.0 44 15 re f
+BT /F2 8 Tf 1.000 1.000 1.000 rg 53.0 560.0 Td (STEP 02) Tj ET
+BT /F2 10.5 Tf 0.060 0.090 0.160 rg 100.0 560.0 Td (Generate Faculty Classic PAT \(Recommended for Full Setup\)) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 541.0 Td (- On GitHub.com, click your profile picture \(top-right\) -> Settings.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 528.0 Td (- In the left sidebar \(bottom\), click Developer settings -> Personal access tokens ->) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 515.0 Td (  Tokens \(classic\).) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 502.0 Td (- Click 'Generate new token' -> 'Generate new token \(classic\)'.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 489.0 Td (- Note: Enter 'PatientTracker Faculty Admin' and choose an Expiration \(e.g., 90 days) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 476.0 Td (  or Custom\).) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 463.0 Td (- Select Scopes: Check the top-level 'repo' box \(enables repo creation, branch) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 450.0 Td (  creation, file pushes, and PR merges\).) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 437.0 Td (- Click 'Generate token' and copy the token \(starts with ghp_...\) into a safe password) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 424.0 Td (  manager.) Tj ET
+0.06 0.09 0.16 rg 48 402.0 44 15 re f
+BT /F2 8 Tf 1.000 1.000 1.000 rg 53.0 406.0 Td (STEP 03) Tj ET
+BT /F2 10.5 Tf 0.060 0.090 0.160 rg 100.0 406.0 Td (Invite Students as Repository Collaborators) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 387.0 Td (- Open your lab repository on GitHub.com -> Settings -> Collaborators -> Add people.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 374.0 Td (- Add each student's GitHub username or email.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 361.0 Td (- Ask every student to open their email / GitHub notifications and click 'Accept) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 348.0 Td (  invitation' before pushing code.) Tj ET
+0.06 0.09 0.16 rg 48 326.0 44 15 re f
+BT /F2 8 Tf 1.000 1.000 1.000 rg 53.0 330.0 Td (STEP 04) Tj ET
+BT /F2 10.5 Tf 0.060 0.090 0.160 rg 100.0 330.0 Td (Use Faculty PAT inside PatientTracker \(#/faculty\)) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 311.0 Td (- Sign in at <App-URL>/#/faculty \(default: faculty / Admin@123\).) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 298.0 Td (- Click 'Connect GitHub Repo', enter your GitHub Username/Org, Repository Name, and) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 285.0 Td (  paste your ghp_... token.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 272.0 Td (- In Tab 1, click 'Initialize Starter Repo & 3 Branches' and then 'Create Mapped) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 259.0 Td (  Student Branches'.) Tj ET
+0.94 0.97 0.97 rg 48 226.0 499 24 re f
+0.06 0.46 0.43 rg 48 226.0 4 24 re f
+BT /F2 11.5 Tf 0.060 0.090 0.160 rg 60.0 234.0 Td (PART 2: STUDENT PAT SETUP \(FINE-GRAINED TOKEN\)) Tj ET
+BT /F2 8.8 Tf 0.060 0.460 0.430 rg 435.0 235.0 Td (Route: #/student) Tj ET
+0.06 0.09 0.16 rg 48 205.0 44 15 re f
+BT /F2 8 Tf 1.000 1.000 1.000 rg 53.0 209.0 Td (STEP 01) Tj ET
+BT /F2 10.5 Tf 0.060 0.090 0.160 rg 100.0 209.0 Td (Accept the Faculty Collaborator Invitation First) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 190.0 Td (- Sign in to your student GitHub account at https://github.com.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 177.0 Td (- Check your registered email or click the Bell icon \(top-right on GitHub\) to accept) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 164.0 Td (  the collaborator invite for the faculty's lab repository.) Tj ET
+0.88 0.91 0.94 rg 48 44 499 0.7 re f
+BT /F1 8 Tf 0.39 0.45 0.55 rg 48 30 Td (PatientTracker MCA - GitHub Personal Access Token \(PAT\) Guide) Tj ET
+BT /F1 8 Tf 0.39 0.45 0.55 rg 495 30 Td (Page 1 of 2) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 6072 >>
+stream
+0.06 0.46 0.43 rg 48 762 499 2 re f
+BT /F1 8 Tf 0.390 0.450 0.550 rg 48.0 770.0 Td (PatientTracker MCA Lab Studio - GitHub PAT Setup Guide) Tj ET
+0.06 0.09 0.16 rg 48 737.0 44 15 re f
+BT /F2 8 Tf 1.000 1.000 1.000 rg 53.0 741.0 Td (STEP 02) Tj ET
+BT /F2 10.5 Tf 0.060 0.090 0.160 rg 100.0 741.0 Td (Generate Student Fine-Grained PAT \(Scoped Only to Lab Repo\)) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 722.0 Td (- Click your GitHub profile picture \(top-right\) -> Settings.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 709.0 Td (- Scroll down the left sidebar and click Developer settings -> Personal access tokens) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 696.0 Td (  -> Fine-grained tokens.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 683.0 Td (- Click 'Generate new token'.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 670.0 Td (- Token name: Enter 'PatientTracker Student Lab' and set Expiration \(e.g., 30 days or) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 657.0 Td (  end of semester\).) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 644.0 Td (- Resource owner: Keep your own GitHub account \(or select the faculty organization if) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 631.0 Td (  instructed\).) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 618.0 Td (- Repository access: Select 'Only select repositories' -> pick the faculty's lab) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 605.0 Td (  repository \(e.g., PatientTracker-MCA\).) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 592.0 Td (- Repository permissions \(expand the dropdown\): Set 'Contents' = Read and write, and) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 579.0 Td (  'Pull requests' = Read and write. Leave Metadata as Read-only.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 566.0 Td (- Click 'Generate token' and copy the token \(starts with github_pat_...\) immediately.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 553.0 Td (  GitHub will NOT show it again.) Tj ET
+0.06 0.09 0.16 rg 48 531.0 44 15 re f
+BT /F2 8 Tf 1.000 1.000 1.000 rg 53.0 535.0 Td (STEP 03) Tj ET
+BT /F2 10.5 Tf 0.060 0.090 0.160 rg 100.0 535.0 Td (Paste Student PAT When Cloning in Student Lab \(#/student\)) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 516.0 Td (- Open <App-URL>/#/student and sign in with your Official Email \(e.g.,) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 503.0 Td (  26SP216XXXX@student.hindustanuiv.ac.in\) and RegNo.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 490.0 Td (- On the 'Clone Lab Repository' screen, verify the Faculty GitHub Repository Link.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 477.0 Td (- Paste your Personal Access Token \(github_pat_...\) into the token field and click) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 464.0 Td (  'Clone Repository & Open Editor'.) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 451.0 Td (- Edit your assigned file, update CONTRIBUTORS.txt, click 'Push to <your-branch>', and) Tj ET
+BT /F1 9.2 Tf 0.200 0.250 0.330 rg 58.0 438.0 Td (  click 'Open PR -> <module-branch>'.) Tj ET
+0.99 0.97 0.90 rg 48 306.0 499 123 re f
+0.85 0.65 0.13 rg 48 306.0 3 123 re f
+BT /F2 9.5 Tf 0.550 0.330 0.030 rg 58.0 415.0 Td (Security & Session Policy \(Important for Both Faculty & Students\)) Tj ET
+BT /F1 8.8 Tf 0.350 0.220 0.050 rg 58.0 400.0 Td (1. Never share your PAT with classmates or commit/paste your PAT inside HTML, CSS,) Tj ET
+BT /F1 8.8 Tf 0.350 0.220 0.050 rg 58.0 387.0 Td (JS, or README files.) Tj ET
+BT /F1 8.8 Tf 0.350 0.220 0.050 rg 58.0 374.0 Td (2. For security, the app keeps your PAT strictly in browser tab memory \(never) Tj ET
+BT /F1 8.8 Tf 0.350 0.220 0.050 rg 58.0 361.0 Td (saved to localStorage\). If you refresh or close the tab, simply paste your PAT) Tj ET
+BT /F1 8.8 Tf 0.350 0.220 0.050 rg 58.0 348.0 Td (again when pushing to GitHub.) Tj ET
+BT /F1 8.8 Tf 0.350 0.220 0.050 rg 58.0 335.0 Td (3. If a token is accidentally leaked, go to GitHub Settings -> Developer settings) Tj ET
+BT /F1 8.8 Tf 0.350 0.220 0.050 rg 58.0 322.0 Td (-> Personal access tokens and click Delete/Revoke immediately.) Tj ET
+0.94 0.97 0.97 rg 48 274.0 499 24 re f
+0.06 0.46 0.43 rg 48 274.0 4 24 re f
+BT /F2 11.5 Tf 0.060 0.090 0.160 rg 60.0 282.0 Td (TROUBLESHOOTING COMMON PAT ERRORS) Tj ET
+BT /F2 8.8 Tf 0.060 0.460 0.430 rg 435.0 283.0 Td (Quick Reference) Tj ET
+0.95 0.96 0.98 rg 48 252.0 499 18 re f
+BT /F2 9 Tf 0.150 0.200 0.300 rg 56.0 257.0 Td (Error Message) Tj ET
+BT /F2 9 Tf 0.150 0.200 0.300 rg 200.0 257.0 Td (Likely Cause) Tj ET
+BT /F2 9 Tf 0.150 0.200 0.300 rg 390.0 257.0 Td (How to Fix) Tj ET
+0.90 0.92 0.95 rg 48 232.0 499 0.5 re f
+BT /F2 8.6 Tf 0.060 0.090 0.160 rg 56.0 237.0 Td (Bad credentials \(401\)) Tj ET
+BT /F1 8.6 Tf 0.200 0.250 0.330 rg 200.0 237.0 Td (Expired, revoked, or mistyped PAT) Tj ET
+BT /F1 8.6 Tf 0.060 0.460 0.430 rg 390.0 237.0 Td (Regenerate a new PAT and paste without spaces) Tj ET
+0.90 0.92 0.95 rg 48 214.0 499 0.5 re f
+BT /F2 8.6 Tf 0.060 0.090 0.160 rg 56.0 219.0 Td (Not Found \(404\)) Tj ET
+BT /F1 8.6 Tf 0.200 0.250 0.330 rg 200.0 219.0 Td (Wrong owner/repo or private invite pending) Tj ET
+BT /F1 8.6 Tf 0.060 0.460 0.430 rg 390.0 219.0 Td (Check repo URL and accept collaborator invite) Tj ET
+0.90 0.92 0.95 rg 48 196.0 499 0.5 re f
+BT /F2 8.6 Tf 0.060 0.090 0.160 rg 56.0 201.0 Td (Resource not accessible \(403\)) Tj ET
+BT /F1 8.6 Tf 0.200 0.250 0.330 rg 200.0 201.0 Td (Missing write permissions on token) Tj ET
+BT /F1 8.6 Tf 0.060 0.460 0.430 rg 390.0 201.0 Td (Enable Contents + Pull requests \(Read & write\)) Tj ET
+0.90 0.92 0.95 rg 48 178.0 499 0.5 re f
+BT /F2 8.6 Tf 0.060 0.090 0.160 rg 56.0 183.0 Td (Conflict on Push \(409\)) Tj ET
+BT /F1 8.6 Tf 0.200 0.250 0.330 rg 200.0 183.0 Td (Remote branch changed after clone) Tj ET
+BT /F1 8.6 Tf 0.060 0.460 0.430 rg 390.0 183.0 Td (Pick Keep Local / Remote / Merge in Conflict UI) Tj ET
+0.88 0.91 0.94 rg 48 44 499 0.7 re f
+BT /F1 8 Tf 0.39 0.45 0.55 rg 48 30 Td (PatientTracker MCA - GitHub Personal Access Token \(PAT\) Guide) Tj ET
+BT /F1 8 Tf 0.39 0.45 0.55 rg 495 30 Td (Page 2 of 2) Tj ET
+endstream
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000266 00000 n 
+0000000402 00000 n 
+0000005719 00000 n 
+0000005855 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+11979
+%%EOF

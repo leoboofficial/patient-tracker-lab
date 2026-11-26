@@ -44,6 +44,7 @@ import {
 } from '@/src/lib/sheetsAndAuth';
 import { ConflictPayload, ConflictResolverModal } from '@/src/components/ConflictResolverModal';
 import { SubmissionPdfReport } from '@/src/components/SubmissionPdfReport';
+import { LabManualModal } from '@/src/components/LabManualModal';
 
 interface Props {
   urlRollNo: number | null;
@@ -113,6 +114,7 @@ export const StudentWorkbench: React.FC<Props> = ({
   // Step 4: Submission status & PDF Report
   const [submissions, setSubmissions] = useState<SubmissionRecord[]>(() => loadSubmissions());
   const [showPdfReport, setShowPdfReport] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
 
   const taskMeta = useMemo(() => {
     if (!student) return null;
@@ -641,7 +643,7 @@ export const StudentWorkbench: React.FC<Props> = ({
                 required
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="student@college.edu"
+                placeholder="26SP216XXXX@student.hindustanuiv.ac.in"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-700 focus:outline-none"
               />
             </div>
@@ -656,7 +658,7 @@ export const StudentWorkbench: React.FC<Props> = ({
                 required
                 value={regNoInput}
                 onChange={(e) => setRegNoInput(e.target.value)}
-                placeholder="e.g., 24MCA001"
+                placeholder="e.g., 26SP216XXXX, 26SP217XXXX, 26SP218XXXX"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm uppercase focus:border-teal-700 focus:outline-none"
               />
             </div>
@@ -686,14 +688,24 @@ export const StudentWorkbench: React.FC<Props> = ({
                 Welcome, <strong className="text-slate-900">{student.name}</strong> ({student.regNo} · {student.department}).
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setStudent(null)}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              Sign Out
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setManualOpen(true)}
+                className="inline-flex items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-100"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                Manual (PDF)
+              </button>
+              <button
+                type="button"
+                onClick={() => setStudent(null)}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Sign Out
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-700">
@@ -762,6 +774,12 @@ export const StudentWorkbench: React.FC<Props> = ({
             </button>
           </form>
         </section>
+
+        <LabManualModal
+          open={manualOpen}
+          role="student"
+          onClose={() => setManualOpen(false)}
+        />
       </div>
     );
   }
@@ -806,6 +824,14 @@ export const StudentWorkbench: React.FC<Props> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setManualOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100"
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              Manual (PDF)
+            </button>
             {currentSubmission?.status === 'Evaluated' && (
               <button
                 type="button"
@@ -1106,6 +1132,12 @@ export const StudentWorkbench: React.FC<Props> = ({
         busy={busy}
         onResolve={handleResolveConflict}
         onCancel={() => setConflict(null)}
+      />
+
+      <LabManualModal
+        open={manualOpen}
+        role="student"
+        onClose={() => setManualOpen(false)}
       />
     </div>
   );
