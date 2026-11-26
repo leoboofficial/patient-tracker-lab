@@ -59,6 +59,8 @@ export default function App() {
     return null;
   });
   const [ghModalOpen, setGhModalOpen] = useState<boolean>(false);
+  const [facultyLoggedIn, setFacultyLoggedIn] = useState<boolean>(false);
+  const [studentLoggedIn, setStudentLoggedIn] = useState<boolean>(false);
 
   useEffect(() => {
     function handleHashChange() {
@@ -76,6 +78,9 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  const showGitHubButton =
+    parsed.route === 'faculty' ? facultyLoggedIn : studentLoggedIn;
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="sticky top-0 z-40 flex items-center justify-between gap-8 border-b border-slate-200 bg-white px-6 py-3.5">
@@ -85,15 +90,17 @@ export default function App() {
             : 'PatientTracker · Student Lab'}
         </span>
 
-        <div className="flex items-center shrink-0">
-          <button
-            type="button"
-            onClick={() => setGhModalOpen(true)}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-slate-800 whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            {githubConfig ? `${githubConfig.owner}/${githubConfig.repo}` : 'Connect GitHub'}
-          </button>
-        </div>
+        {showGitHubButton && (
+          <div className="flex items-center shrink-0">
+            <button
+              type="button"
+              onClick={() => setGhModalOpen(true)}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-slate-800 whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              {githubConfig ? `${githubConfig.owner}/${githubConfig.repo}` : 'Connect GitHub'}
+            </button>
+          </div>
+        )}
       </header>
 
       <main>
@@ -102,6 +109,7 @@ export default function App() {
             githubConfig={githubConfig}
             onConnectGitHub={(cfg) => setGithubConfig(cfg)}
             onOpenGitHubModal={() => setGhModalOpen(true)}
+            onAuthChange={setFacultyLoggedIn}
           />
         ) : (
           <StudentWorkbench
@@ -109,6 +117,7 @@ export default function App() {
             githubConfig={githubConfig}
             onConnectGitHub={(cfg) => setGithubConfig(cfg)}
             onOpenGitHubModal={() => setGhModalOpen(true)}
+            onAuthChange={setStudentLoggedIn}
           />
         )}
       </main>

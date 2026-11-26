@@ -70,6 +70,7 @@ interface Props {
   githubConfig: GitHubConfig | null;
   onConnectGitHub: (cfg: GitHubConfig) => void;
   onOpenGitHubModal: () => void;
+  onAuthChange?: (authenticated: boolean) => void;
 }
 
 type FacultyTab = 'setup' | 'students' | 'submissions' | 'prs';
@@ -78,6 +79,7 @@ export const FacultyConsole: React.FC<Props> = ({
   githubConfig,
   onConnectGitHub,
   onOpenGitHubModal,
+  onAuthChange,
 }) => {
   // Authentication State
   const [authenticated, setAuthenticated] = useState(false);
@@ -179,10 +181,11 @@ export const FacultyConsole: React.FC<Props> = ({
   }
 
   useEffect(() => {
+    onAuthChange?.(authenticated);
     if (authenticated) {
       refreshRepoData();
     }
-  }, [authenticated, githubConfig]);
+  }, [authenticated, githubConfig, onAuthChange]);
 
   async function handleFacultyLogin(e: React.FormEvent) {
     e.preventDefault();

@@ -50,6 +50,7 @@ interface Props {
   githubConfig: GitHubConfig | null;
   onConnectGitHub: (cfg: GitHubConfig) => void;
   onOpenGitHubModal: () => void;
+  onAuthChange?: (loggedIn: boolean) => void;
 }
 
 type EditorTab = 'assigned' | 'contributors' | 'storage-ref';
@@ -59,6 +60,7 @@ export const StudentWorkbench: React.FC<Props> = ({
   githubConfig,
   onConnectGitHub,
   onOpenGitHubModal,
+  onAuthChange,
 }) => {
   const settings = useMemo(() => loadLabSettings(), []);
 
@@ -130,6 +132,11 @@ export const StudentWorkbench: React.FC<Props> = ({
       ) || null
     );
   }, [submissions, student]);
+
+  // Sync student auth state to parent header
+  useEffect(() => {
+    onAuthChange?.(Boolean(student));
+  }, [student, onAuthChange]);
 
   // If URL carries ?owner=&repo=, keep repo URL synced
   useEffect(() => {
