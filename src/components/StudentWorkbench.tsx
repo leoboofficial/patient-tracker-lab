@@ -3,6 +3,8 @@ import {
   AlertCircle,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   FileCode2,
   FileText,
   FolderGit2,
@@ -12,6 +14,7 @@ import {
   LogOut,
   Play,
   RotateCcw,
+  TableProperties,
 } from 'lucide-react';
 import { TASKS_54 } from '@/src/data/tasks54';
 import {
@@ -45,6 +48,7 @@ import {
 import { ConflictPayload, ConflictResolverModal } from '@/src/components/ConflictResolverModal';
 import { SubmissionPdfReport } from '@/src/components/SubmissionPdfReport';
 import { LabManualModal } from '@/src/components/LabManualModal';
+import { FormFieldGuidePanel } from '@/src/components/FormFieldGuidePanel';
 
 interface Props {
   urlRollNo: number | null;
@@ -116,6 +120,7 @@ export const StudentWorkbench: React.FC<Props> = ({
   const [submissions, setSubmissions] = useState<SubmissionRecord[]>(() => loadSubmissions());
   const [showPdfReport, setShowPdfReport] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [showFieldGuide, setShowFieldGuide] = useState(true);
 
   const taskMeta = useMemo(() => {
     if (!student) return null;
@@ -720,8 +725,9 @@ export const StudentWorkbench: React.FC<Props> = ({
   // STEP 2: Clone Faculty Repository
   if (!cloned) {
     return (
-      <div className="mx-auto flex min-h-[calc(100vh-72px)] max-w-lg items-center justify-center px-6 py-10">
-        <section className="w-full rounded-xl border border-slate-200 bg-white p-6">
+      <div className="mx-auto flex min-h-[calc(100vh-72px)] max-w-6xl items-center justify-center px-6 py-8">
+        <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-12">
+          <section className="rounded-xl border border-slate-200 bg-white p-6 lg:col-span-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h1 className="text-xl font-bold text-slate-900">Clone Lab Repository</h1>
@@ -825,6 +831,14 @@ export const StudentWorkbench: React.FC<Props> = ({
           </form>
         </section>
 
+          <section className="rounded-xl border border-slate-200 bg-white p-6 lg:col-span-7">
+            <FormFieldGuidePanel
+              rollNo={student.rollNo}
+              exerciseTitle={`Ex ${String(student.rollNo).padStart(2, '0')} · ${student.filePath}`}
+            />
+          </section>
+        </div>
+
         <LabManualModal
           open={manualOpen}
           role="student"
@@ -925,14 +939,37 @@ export const StudentWorkbench: React.FC<Props> = ({
         </div>
 
         {taskMeta && (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
-            <div>
-              <strong className="text-slate-900">Instructions:</strong> {taskMeta.summary} —{' '}
-              <span className="text-slate-500">{taskMeta.validationHint}</span>
+          <div className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <strong className="text-slate-900">Instructions:</strong> {taskMeta.summary} —{' '}
+                <span className="text-slate-500">{taskMeta.validationHint}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-mono text-slate-500">
+                  Store: {taskMeta.jsonStore} ({taskMeta.jsonKeys.join(', ')})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowFieldGuide((v) => !v)}
+                  className="inline-flex items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-800 hover:bg-teal-100"
+                >
+                  <TableProperties className="h-3.5 w-3.5" />
+                  <span>{showFieldGuide ? 'Hide Field Spec' : 'Form Elements & Field Guide'}</span>
+                  {showFieldGuide ? (
+                    <ChevronUp className="h-3 w-3" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3" />
+                  )}
+                </button>
+              </div>
             </div>
-            <div className="font-mono text-slate-500">
-              Store: {taskMeta.jsonStore} ({taskMeta.jsonKeys.join(', ')})
-            </div>
+
+            {showFieldGuide && (
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <FormFieldGuidePanel rollNo={student.rollNo} compact />
+              </div>
+            )}
           </div>
         )}
 

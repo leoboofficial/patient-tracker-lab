@@ -17,6 +17,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  TableProperties,
   Trash2,
 } from 'lucide-react';
 import {
@@ -69,6 +70,7 @@ import {
   updateFacultyPassword,
 } from '@/src/lib/sheetsAndAuth';
 import { LabManualModal } from '@/src/components/LabManualModal';
+import { FormFieldGuidePanel } from '@/src/components/FormFieldGuidePanel';
 
 interface Props {
   githubConfig: GitHubConfig | null;
@@ -124,6 +126,7 @@ export const FacultyConsole: React.FC<Props> = ({
   const [newStudentRollNo, setNewStudentRollNo] = useState<number>(1);
   const [bulkCsvText, setBulkCsvText] = useState('');
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [expandedFieldsRegNo, setExpandedFieldsRegNo] = useState<string | null>(null);
 
   // Submissions & Rubric Evaluation
   const [submissions, setSubmissions] = useState<SubmissionRecord[]>(() => loadSubmissions());
@@ -1558,45 +1561,77 @@ export const FacultyConsole: React.FC<Props> = ({
                   <th className="px-4 py-3">Dept</th>
                   <th className="px-4 py-3">Mapped Exercise &amp; File</th>
                   <th className="px-4 py-3">Assigned Branch</th>
-                  <th className="px-4 py-3 text-right">Remove</th>
+                  <th className="px-4 py-3 text-right">Field Spec &amp; Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {roster.map((s) => (
-                  <tr key={s.regNo} className="hover:bg-slate-50/70">
-                    <td className="px-4 py-3 font-mono font-semibold text-slate-900">{s.regNo}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">{s.name}</div>
-                      <div className="text-slate-500">{s.email}</div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">{s.department}</td>
-                    <td className="px-4 py-3">
-                      <select
-                        value={s.rollNo}
-                        onChange={(e) => updateStudentMapping(s.regNo, Number(e.target.value))}
-                        aria-label={`Mapped exercise for ${s.name}`}
-                        className="max-w-xs rounded border border-slate-300 bg-white px-2 py-1 text-xs"
-                      >
-                        {TASKS_54.map((t) => (
-                          <option key={t.rollNo} value={t.rollNo}>
-                            Ex {t.rollLabel}: {t.filePath} — {t.summary}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-teal-800">{s.branchName}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => removeStudent(s.regNo)}
-                        aria-label={`Remove ${s.name}`}
-                        className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-700"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {roster.map((s) => {
+                  const isFieldsOpen = expandedFieldsRegNo === s.regNo;
+                  return (
+                    <React.Fragment key={s.regNo}>
+                      <tr className="hover:bg-slate-50/70">
+                        <td className="px-4 py-3 font-mono font-semibold text-slate-900">{s.regNo}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-slate-900">{s.name}</div>
+                          <div className="text-slate-500">{s.email}</div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{s.department}</td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={s.rollNo}
+                            onChange={(e) => updateStudentMapping(s.regNo, Number(e.target.value))}
+                            aria-label={`Mapped exercise for ${s.name}`}
+                            className="max-w-xs rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+                          >
+                            {TASKS_54.map((t) => (
+                              <option key={t.rollNo} value={t.rollNo}>
+                                Ex {t.rollLabel}: {t.filePath} — {t.summary}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-teal-800">{s.branchName}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedFieldsRegNo((prev) => (prev === s.regNo ? null : s.regNo))
+                              }
+                              className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-semibold ${
+                                isFieldsOpen
+                                  ? 'border-teal-700 bg-teal-700 text-white'
+                                  : 'border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100'
+                              }`}
+                            >
+                              <TableProperties className="h-3 w-3" />
+                              Fields
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeStudent(s.regNo)}
+                              aria-label={`Remove ${s.name}`}
+                              className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-700"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isFieldsOpen && (
+                        <tr className="bg-slate-50/80">
+                          <td colSpan={6} className="px-4 py-4">
+                            <FormFieldGuidePanel
+                              rollNo={s.rollNo}
+                              exerciseTitle={`${s.name} (${s.regNo}) · ${s.filePath}`}
+                              compact
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
