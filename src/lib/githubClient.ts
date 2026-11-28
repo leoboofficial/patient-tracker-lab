@@ -217,6 +217,47 @@ export async function listBranches(cfg: GitHubConfig): Promise<GitHubBranchInfo[
   }
 }
 
+export async function ensureRepoInitialized(cfg: GitHubConfig): Promise<string> {
+  let branches = await listBranches(cfg);
+  if (branches.length > 0) {
+    return (
+      branches.find((b) => b.name === 'main')?.name ||
+      branches.find((b) => b.name === 'master')?.name ||
+      branches[0].name
+    );
+  }
+
+  // GitHub rejects PUT /contents/{path} with a `branch` field or git/commits on a 0-commit repo.
+  // Omitting `branch` on the very first README.md PUT creates the initial commit on the default branch.
+  await ghFetch<{ commit: { sha: string } }>(
+    cfg,
+    `/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/README.md`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'chore: initialize repository',
+        content: toBase64Utf8(
+          '# PatientTracker-MCA\n\nHTML5, CSS3, JavaScript & JSON Lab Repository.\n'
+        ),
+      }),
+    }
+  );
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    branches = await listBranches(cfg);
+    if (branches.length > 0) break;
+    await new Promise((r) => setTimeout(r, 350));
+  }
+
+  return (
+    branches.find((b) => b.name === 'main')?.name ||
+    branches.find((b) => b.name === 'master')?.name ||
+    branches[0]?.name ||
+    'main'
+  );
+}
+
 export async function createBranchFrom(
   cfg: GitHubConfig,
   newBranch: string,
@@ -226,15 +267,9 @@ export async function createBranchFrom(
   const existing = branches.find((b) => b.name === newBranch);
   if (existing) return existing;
 
-  // If the repository has 0 commits yet, create an initial commit on main first
+  // If the repository has 0 commits yet, initialize the default branch first
   if (branches.length === 0) {
-    await putFileContent(
-      cfg,
-      'README.md',
-      '# PatientTracker-MCA\n\nHTML5, CSS3, JavaScript & JSON Lab Repository.\n',
-      'chore: initialize repository',
-      'main'
-    );
+    await ensureRepoInitialized(cfg);
     branches = await listBranches(cfg);
   }
 
@@ -347,13 +382,44 @@ export async function putFileContent(
       fileSha: res.content?.sha || shaToUse || '',
     };
   } catch (err) {
-    if (
-      err instanceof Error &&
-      (err.message.includes('409') || err.message.toLowerCase().includes('does not match'))
-    ) {
-      const latest = await getFileContent(cfg, path, branch);
-      if (latest) {
-        throw new GitConflictError(path, latest.content, latest.sha, err.message);
+    if (err instanceof Error) {
+      const msg = err.message.toLowerCase();
+      if (
+        msg.includes('repository is empty') ||
+        (msg.includes('branch') && msg.includes('not found'))
+      ) {
+        const defaultBranch = await ensureRepoInitialized(cfg);
+        if (branch && branch !== defaultBranch) {
+          await createBranchFrom(cfg, branch, defaultBranch);
+        }
+        const refreshed = await getFileContent(cfg, path, branch);
+        const retryBody: Record<string, string> = {
+          message,
+          content: toBase64Utf8(content),
+          branch,
+        };
+        if (refreshed?.sha) {
+          retryBody.sha = refreshed.sha;
+        }
+        const retryRes = await ghFetch<{ commit: { sha: string }; content?: { sha?: string } }>(
+          cfg,
+          `/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/${encodePathSegments(path)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(retryBody),
+          }
+        );
+        return {
+          commitSha: retryRes.commit.sha,
+          fileSha: retryRes.content?.sha || refreshed?.sha || '',
+        };
+      }
+      if (msg.includes('409') || msg.includes('does not match')) {
+        const latest = await getFileContent(cfg, path, branch);
+        if (latest) {
+          throw new GitConflictError(path, latest.content, latest.sha, err.message);
+        }
       }
     }
     throw err;

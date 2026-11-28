@@ -32,6 +32,7 @@ import {
   GitHubPullRequest,
   createBranchFrom,
   createPullRequest,
+  ensureRepoInitialized,
   listBranches,
   listPullRequests,
   mergePullRequest,
@@ -60,12 +61,14 @@ import {
   loadSubmissions,
   parseGitHubRepoUrl,
   recordSubmissionToSheetAndLocal,
+  resolveStudentBranchName,
   saveLabSettings,
   saveStudentRoster,
   saveSubmissions,
   sendFacultyOtp,
   sha256Hex,
   syncRosterFromGoogleSheet,
+  syncSubmissionsFromGitHub,
   syncSubmissionsFromGoogleSheet,
   updateFacultyPassword,
 } from '@/src/lib/sheetsAndAuth';
@@ -114,6 +117,14 @@ export const FacultyConsole: React.FC<Props> = ({
   // Lab Configuration
   const [repoUrlInput, setRepoUrlInput] = useState(() => loadLabSettings().repoUrl);
   const [appsScriptInput, setAppsScriptInput] = useState(() => loadLabSettings().appsScriptUrl);
+  const [programRepos, setProgramRepos] = useState<Record<string, string>>(
+    () => loadLabSettings().programRepos || {}
+  );
+  const [prefixBranchWithProgram, setPrefixBranchWithProgram] = useState<boolean>(() =>
+    Boolean(loadLabSettings().prefixBranchWithProgram)
+  );
+  const [newProgName, setNewProgName] = useState('');
+  const [newProgRepo, setNewProgRepo] = useState('');
   const [copiedPortal, setCopiedPortal] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
 
@@ -149,6 +160,7 @@ export const FacultyConsole: React.FC<Props> = ({
   const [ghPrs, setGhPrs] = useState<GitHubPullRequest[]>([]);
   const [busy, setBusy] = useState(false);
   const [sheetSyncBusy, setSheetSyncBusy] = useState(false);
+  const [subSyncBusy, setSubSyncBusy] = useState(false);
   const [progressText, setProgressText] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
@@ -224,27 +236,119 @@ export const FacultyConsole: React.FC<Props> = ({
     }
   }
 
-  async function refreshRepoData() {
-    setSubmissions(loadSubmissions());
-    const savedScriptUrl = loadLabSettings().appsScriptUrl;
-    if (savedScriptUrl) {
-      await handleSyncFromSheet(savedScriptUrl, { quietIfNeedsScriptUpdate: true });
+  function getEffectiveGitHubConfig(): GitHubConfig | null {
+    if (githubConfig?.owner && githubConfig?.repo) {
+      return githubConfig;
     }
-    if (githubConfig) {
-      try {
+    const parsed = parseGitHubRepoUrl(repoUrlInput || loadLabSettings().repoUrl);
+    if (parsed) {
+      return { owner: parsed.owner, repo: parsed.repo, token: '' };
+    }
+    return null;
+  }
+
+  async function handleSyncSubmissionsNow() {
+    setSubSyncBusy(true);
+    setStatusMsg(null);
+    try {
+      const savedScriptUrl = (appsScriptInput || loadLabSettings().appsScriptUrl).trim();
+      let latestRoster = roster;
+      if (savedScriptUrl) {
+        const [rosterRes] = await Promise.all([
+          syncRosterFromGoogleSheet(savedScriptUrl).catch(() => null),
+          syncSubmissionsFromGoogleSheet(savedScriptUrl),
+        ]);
+        if (rosterRes?.synced) {
+          latestRoster = rosterRes.roster;
+          setRoster(rosterRes.roster);
+        }
+      }
+
+      const effectiveCfg = getEffectiveGitHubConfig();
+      let ghSynced = 0;
+      if (effectiveCfg) {
         const [branches, prs] = await Promise.all([
-          listBranches(githubConfig),
-          listPullRequests(githubConfig),
+          listBranches(effectiveCfg),
+          listPullRequests(effectiveCfg),
         ]);
         setGhBranches(branches);
         setGhPrs(prs);
-      } catch (err) {
+        const ghRes = await syncSubmissionsFromGitHub(
+          effectiveCfg,
+          latestRoster,
+          branches,
+          prs
+        );
+        ghSynced = ghRes.syncedCount;
+        setSubmissions(ghRes.submissions);
         setStatusMsg({
-          type: 'error',
-          text: err instanceof Error ? err.message : 'Failed to refresh GitHub repository.',
+          type: 'success',
+          text: `Synced ${ghRes.submissions.length} total submission(s) (${ghSynced} pulled from GitHub branches${savedScriptUrl ? ' + Google Sheet checked' : ''}).`,
+        });
+      } else {
+        const updatedSubs = loadSubmissions();
+        setSubmissions(updatedSubs);
+        setStatusMsg({
+          type: 'success',
+          text: `Loaded ${updatedSubs.length} submission(s)${savedScriptUrl ? ' from Google Sheet' : ''}.`,
         });
       }
-    } else {
+    } catch (err) {
+      setStatusMsg({
+        type: 'error',
+        text:
+          err instanceof Error
+            ? err.message
+            : 'Unable to sync student submissions from GitHub/Sheet.',
+      });
+    } finally {
+      setSubSyncBusy(false);
+    }
+  }
+
+  async function refreshRepoData() {
+    setSubmissions(loadSubmissions());
+    const savedScriptUrl = loadLabSettings().appsScriptUrl;
+    let latestRoster = roster;
+    if (savedScriptUrl) {
+      const [rosterRes] = await Promise.all([
+        syncRosterFromGoogleSheet(savedScriptUrl).catch(() => null),
+        syncSubmissionsFromGoogleSheet(savedScriptUrl),
+      ]);
+      if (rosterRes?.synced) {
+        latestRoster = rosterRes.roster;
+        setRoster(rosterRes.roster);
+      }
+      setSubmissions(loadSubmissions());
+    }
+
+    const effectiveCfg = getEffectiveGitHubConfig();
+    if (effectiveCfg) {
+      try {
+        const [branches, prs] = await Promise.all([
+          listBranches(effectiveCfg),
+          listPullRequests(effectiveCfg),
+        ]);
+        setGhBranches(branches);
+        setGhPrs(prs);
+        const ghRes = await syncSubmissionsFromGitHub(
+          effectiveCfg,
+          latestRoster,
+          branches,
+          prs
+        );
+        setSubmissions(ghRes.submissions);
+      } catch (err) {
+        if (githubConfig?.token) {
+          setStatusMsg({
+            type: 'error',
+            text: err instanceof Error ? err.message : 'Failed to refresh GitHub repository.',
+          });
+        }
+      }
+    }
+
+    if (!githubConfig?.token) {
       let state = loadLocalLabState();
       if (!state.initialized) {
         state = await initializeLocalLabRepo(loadAssignments());
@@ -362,11 +466,38 @@ export const FacultyConsole: React.FC<Props> = ({
       ? `https://github.com/${parsed.owner}/${parsed.repo}`
       : cleanedRepo;
 
-    saveLabSettings({
+    const cleanedProgramRepos: Record<string, string> = {};
+    for (const [prog, url] of Object.entries(programRepos)) {
+      const pKey = prog.trim();
+      const pUrl = url.trim();
+      if (!pKey || !pUrl) continue;
+      const pParsed = parseGitHubRepoUrl(pUrl);
+      cleanedProgramRepos[pKey] = pParsed
+        ? `https://github.com/${pParsed.owner}/${pParsed.repo}`
+        : pUrl;
+    }
+
+    const nextSettings = {
       repoUrl: normalizedRepo,
       appsScriptUrl: cleanedScript,
-    });
+      programRepos: cleanedProgramRepos,
+      prefixBranchWithProgram,
+    };
+    saveLabSettings(nextSettings);
     setRepoUrlInput(normalizedRepo);
+    setProgramRepos(cleanedProgramRepos);
+
+    // Re-apply automatic Program + Task branch mapping to roster
+    const updatedRoster = roster.map((s) => {
+      const task = TASKS_54.find((t) => t.rollNo === s.rollNo || t.filePath === s.filePath);
+      const baseBranch = task?.branchName || s.branchName;
+      return {
+        ...s,
+        branchName: resolveStudentBranchName(baseBranch, s.department, nextSettings),
+      };
+    });
+    setRoster(updatedRoster);
+    saveStudentRoster(updatedRoster);
 
     if (
       parsed &&
@@ -386,7 +517,7 @@ export const FacultyConsole: React.FC<Props> = ({
     } else {
       setStatusMsg({
         type: 'success',
-        text: 'Saved GitHub Repository Link and Google Apps Script configuration. Students will see this repository link automatically after login.',
+        text: 'Saved GitHub Repository Link, Program mappings, and Sheet configuration. Students will receive read-only repo & branch mappings on login.',
       });
     }
   }
@@ -404,6 +535,16 @@ export const FacultyConsole: React.FC<Props> = ({
     if (appsScriptInput.trim()) {
       params.set('sheet', appsScriptInput.trim());
     }
+    const cleanPmap: Record<string, string> = {};
+    for (const [k, v] of Object.entries(programRepos)) {
+      if (k.trim() && v.trim()) cleanPmap[k.trim()] = v.trim();
+    }
+    if (Object.keys(cleanPmap).length > 0) {
+      params.set('pmap', JSON.stringify(cleanPmap));
+    }
+    if (prefixBranchWithProgram) {
+      params.set('pprefix', '1');
+    }
     const qs = params.toString();
     return qs ? `${base}?${qs}` : base;
   }
@@ -415,6 +556,13 @@ export const FacultyConsole: React.FC<Props> = ({
       const refFiles = await loadAllReferenceFiles();
 
       if (githubConfig && githubConfig.token) {
+        setProgressText('Checking & initializing repository default branch...');
+        const defaultBranch = await ensureRepoInitialized(githubConfig);
+        if (defaultBranch !== 'main') {
+          setProgressText(`Creating main from ${defaultBranch}...`);
+          await createBranchFrom(githubConfig, 'main', defaultBranch);
+        }
+
         setProgressText('Pushing starter files to main...');
         for (let i = 0; i < REPO_STARTER_FILES.length; i++) {
           const p = REPO_STARTER_FILES[i];
@@ -465,6 +613,15 @@ export const FacultyConsole: React.FC<Props> = ({
     setStatusMsg(null);
     try {
       if (githubConfig && githubConfig.token) {
+        setProgressText('Checking repository branches...');
+        const defaultBranch = await ensureRepoInitialized(githubConfig);
+        if (defaultBranch !== 'main') {
+          await createBranchFrom(githubConfig, 'main', defaultBranch);
+        }
+        const modBranches: ModuleBranch[] = ['module-login', 'module-doctor', 'module-patient'];
+        for (const mb of modBranches) {
+          await createBranchFrom(githubConfig, mb, 'main');
+        }
         const existing = await listBranches(githubConfig);
         const existingNames = new Set(existing.map((b) => b.name));
         for (let i = 0; i < roster.length; i++) {
@@ -560,15 +717,16 @@ export const FacultyConsole: React.FC<Props> = ({
     const cleanReg = newStudentRegNo.trim().toUpperCase();
     if (!cleanEmail || !cleanReg || !newStudentName.trim()) return;
 
+    const dept = newStudentDept.trim() || 'MCA';
     const newRec: StudentRecord = {
       email: cleanEmail,
       regNo: cleanReg,
       name: newStudentName.trim(),
-      department: newStudentDept.trim() || 'MCA',
+      department: dept,
       rollNo: task.rollNo,
       exerciseTitle: `Ex ${task.rollLabel}: ${task.summary}`,
       moduleBranch: task.moduleBranch,
-      branchName: task.branchName,
+      branchName: resolveStudentBranchName(task.branchName, dept),
       filePath: task.filePath,
     };
 
@@ -606,15 +764,16 @@ export const FacultyConsole: React.FC<Props> = ({
       const [email, regNo, name, dept] = parts;
       const task = TASKS_54[taskCursor % TASKS_54.length];
       taskCursor++;
+      const resolvedDept = dept || 'MCA';
       imported.push({
         email: email.toLowerCase(),
         regNo: regNo.toUpperCase(),
         name,
-        department: dept || 'MCA',
+        department: resolvedDept,
         rollNo: task.rollNo,
         exerciseTitle: `Ex ${task.rollLabel}: ${task.summary}`,
         moduleBranch: task.moduleBranch,
-        branchName: task.branchName,
+        branchName: resolveStudentBranchName(task.branchName, resolvedDept),
         filePath: task.filePath,
       });
     }
@@ -655,7 +814,7 @@ export const FacultyConsole: React.FC<Props> = ({
             rollNo: task.rollNo,
             exerciseTitle: `Ex ${task.rollLabel}: ${task.summary}`,
             moduleBranch: task.moduleBranch,
-            branchName: task.branchName,
+            branchName: resolveStudentBranchName(task.branchName, s.department),
             filePath: task.filePath,
           }
         : s
@@ -706,11 +865,16 @@ export const FacultyConsole: React.FC<Props> = ({
     );
     setSubmissions(nextList);
     saveSubmissions(nextList);
-    await recordSubmissionToSheetAndLocal(updatedRecord, appsScriptInput);
+    const sheetUrl = (appsScriptInput || loadLabSettings().appsScriptUrl).trim();
+    const res = await recordSubmissionToSheetAndLocal(updatedRecord, sheetUrl);
     setSelectedSubId(null);
     setStatusMsg({
       type: 'success',
-      text: `Evaluated ${updatedRecord.studentName} (${updatedRecord.regNo}): ${total} / 50 (${updatedRecord.status}). Student can now generate their PDF report.`,
+      text: `Evaluated ${updatedRecord.studentName} (${updatedRecord.regNo}): ${total} / 50 (${updatedRecord.status}). ${
+        res.syncedToSheet
+          ? 'Synced evaluation to Google Sheet.'
+          : 'Saved locally (attach Apps Script URL to sync to Google Sheet).'
+      }`,
     });
   }
 
@@ -1309,6 +1473,84 @@ export const FacultyConsole: React.FC<Props> = ({
                 />
               </div>
 
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-800">
+                    Program-Based Repo &amp; Branch Mapping
+                  </span>
+                </div>
+                <label className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={prefixBranchWithProgram}
+                    onChange={(e) => setPrefixBranchWithProgram(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Prefix student branch with Program slug (e.g.,{' '}
+                    <span className="font-mono text-teal-800">mca-general/stu-02-login-auth</span>) so cohorts in different programs never collide in a shared repo.
+                  </span>
+                </label>
+
+                <div className="space-y-1.5">
+                  <div className="text-[11px] font-medium text-slate-600">
+                    Optional Program → GitHub Repo Overrides (falls back to default repo above):
+                  </div>
+                  {Array.from(
+                    new Set([
+                      ...roster.map((s) => s.department).filter(Boolean),
+                      ...Object.keys(programRepos),
+                    ])
+                  ).map((prog) => (
+                    <div key={prog} className="grid grid-cols-1 gap-1.5 sm:grid-cols-12 items-center">
+                      <span className="sm:col-span-5 truncate rounded bg-white border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                        {prog}
+                      </span>
+                      <input
+                        type="text"
+                        value={programRepos[prog] || ''}
+                        onChange={(e) =>
+                          setProgramRepos((prev) => ({ ...prev, [prog]: e.target.value }))
+                        }
+                        placeholder="Default repo (or paste custom GitHub URL)"
+                        className="sm:col-span-7 rounded border border-slate-300 bg-white px-2.5 py-1 font-mono text-[11px]"
+                      />
+                    </div>
+                  ))}
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-12 items-center pt-1">
+                    <input
+                      type="text"
+                      value={newProgName}
+                      onChange={(e) => setNewProgName(e.target.value)}
+                      placeholder="Add Program (e.g., MCA - Big Data)"
+                      className="sm:col-span-5 rounded border border-slate-300 bg-white px-2.5 py-1 text-[11px]"
+                    />
+                    <input
+                      type="text"
+                      value={newProgRepo}
+                      onChange={(e) => setNewProgRepo(e.target.value)}
+                      placeholder="https://github.com/owner/repo"
+                      className="sm:col-span-5 rounded border border-slate-300 bg-white px-2.5 py-1 font-mono text-[11px]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newProgName.trim() || !newProgRepo.trim()) return;
+                        setProgramRepos((prev) => ({
+                          ...prev,
+                          [newProgName.trim()]: newProgRepo.trim(),
+                        }));
+                        setNewProgName('');
+                        setNewProgRepo('');
+                      }}
+                      className="sm:col-span-2 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-800 hover:bg-slate-100"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <button
                   type="submit"
@@ -1349,7 +1591,7 @@ export const FacultyConsole: React.FC<Props> = ({
               </summary>
               <div className="mt-2 space-y-2">
                 <p className="text-slate-600">
-                  Create a Google Sheet with two tabs: <span className="font-mono font-semibold">students</span> (Email, RegNo, Name, Department) and <span className="font-mono font-semibold">submission</span> (Timestamp, Official Email, Reg No, Student Name, Exercise Title, Status, Source Code), paste this into Extensions → Apps Script, and deploy as Web App.
+                  Create a Google Sheet with <span className="font-mono font-semibold">students</span> (Email, RegNo, Name, Department, RollNo) and <span className="font-mono font-semibold">submission</span> (auto-created on first push if missing), paste this into Extensions → Apps Script, and deploy as Web App (Anyone with the link). Re-deploy a <strong>New version</strong> after updating this script.
                 </p>
                 <div className="flex justify-end">
                   <button
@@ -1380,6 +1622,20 @@ export const FacultyConsole: React.FC<Props> = ({
               <p className="mt-1 text-xs text-slate-600">
                 Creates starter folders (<span className="font-mono">login/</span>, <span className="font-mono">doctor/</span>, <span className="font-mono">patient/</span>, <span className="font-mono">shared/storage.js</span>), <span className="font-mono">.gitignore</span>, <span className="font-mono">CONTRIBUTORS.txt</span>, CI workflow, and the 3 module branches (<span className="font-mono">module-login</span>, <span className="font-mono">module-doctor</span>, <span className="font-mono">module-patient</span>).
               </p>
+
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700">
+                {githubConfig?.token ? (
+                  <span>
+                    Target: <strong className="font-mono text-teal-800">{githubConfig.owner}/{githubConfig.repo}</strong> (PAT connected — writes directly to GitHub)
+                  </span>
+                ) : githubConfig?.owner ? (
+                  <span>
+                    GitHub repo <strong className="font-mono">{githubConfig.owner}/{githubConfig.repo}</strong> is linked without a PAT. Click <strong>{githubConfig.owner}/{githubConfig.repo}</strong> above to add your Faculty PAT for GitHub pushes, or initialize Local Sandbox below.
+                  </span>
+                ) : (
+                  <span>Running in Local Lab Sandbox mode. Connect GitHub in the header to push directly to GitHub.</span>
+                )}
+              </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-2.5">
                 <button
@@ -1645,14 +1901,25 @@ export const FacultyConsole: React.FC<Props> = ({
             <p className="text-xs text-slate-600">
               Inspect student source code and live rendered output, score the 50-mark practical rubric, and mark as <strong className="text-slate-900">Evaluated</strong> so students can generate their PDF record.
             </p>
-            <button
-              type="button"
-              onClick={exportEvaluationsCsv}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              Export Gradebook (.csv)
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={subSyncBusy}
+                onClick={handleSyncSubmissionsNow}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3.5 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100 disabled:opacity-60"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${subSyncBusy ? 'animate-spin' : ''}`} />
+                {subSyncBusy ? 'Syncing GitHub & Sheet...' : 'Sync from GitHub & Sheet'}
+              </button>
+              <button
+                type="button"
+                onClick={exportEvaluationsCsv}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Export Gradebook (.csv)
+              </button>
+            </div>
           </div>
 
           {selectedSubmission && (

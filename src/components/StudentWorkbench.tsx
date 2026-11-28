@@ -44,6 +44,8 @@ import {
   loadSubmissions,
   parseGitHubRepoUrl,
   recordSubmissionToSheetAndLocal,
+  resolveRepoForProgram,
+  syncSubmissionsFromGoogleSheet,
   verifyStudentWithSheetOrLocal,
 } from '@/src/lib/sheetsAndAuth';
 import { ConflictPayload, ConflictResolverModal } from '@/src/components/ConflictResolverModal';
@@ -68,12 +70,20 @@ export const StudentWorkbench: React.FC<Props> = ({
   onOpenGitHubModal,
   onAuthChange,
 }) => {
-  const resolveFacultyRepoUrl = (cfg: GitHubConfig | null): string => {
+  const resolveFacultyRepoUrl = (cfg: GitHubConfig | null, program?: string): string => {
+    const latest = loadLabSettings();
+    if (program && latest.programRepos) {
+      const cleanProg = program.trim().toLowerCase();
+      for (const [k, v] of Object.entries(latest.programRepos)) {
+        if (k.trim().toLowerCase() === cleanProg && v?.trim()) {
+          return resolveRepoForProgram(program, latest);
+        }
+      }
+    }
     if (cfg?.owner && cfg?.repo) {
       return `https://github.com/${cfg.owner}/${cfg.repo}`;
     }
-    const latest = loadLabSettings();
-    return latest.repoUrl || 'https://github.com/faculty/PatientTracker-MCA';
+    return resolveRepoForProgram(program || '', latest);
   };
 
   // Step 1: Student Login state (Official Email + Reg No — no PIN)
@@ -149,13 +159,13 @@ export const StudentWorkbench: React.FC<Props> = ({
     onAuthChange?.(Boolean(student));
   }, [student, onAuthChange]);
 
-  // Keep faculty repository link synced from URL params, connected repo, or faculty-saved settings
+  // Keep faculty repository link synced from URL params, connected repo, or Program mapping
   useEffect(() => {
-    setRepoUrlInput(resolveFacultyRepoUrl(githubConfig));
+    setRepoUrlInput(resolveFacultyRepoUrl(githubConfig, student?.department));
     if (githubConfig?.token && !studentTokenInput) {
       setStudentTokenInput(githubConfig.token);
     }
-  }, [githubConfig]);
+  }, [githubConfig, student?.department]);
 
   // If urlRollNo was provided on link, pre-fill helper banner (still requires Email + RegNo login)
   const linkedTaskHint = useMemo(() => {
@@ -179,7 +189,21 @@ export const StudentWorkbench: React.FC<Props> = ({
         return;
       }
       setStudent(verified);
-      setRepoUrlInput(resolveFacultyRepoUrl(githubConfig));
+      const mappedRepoUrl = resolveFacultyRepoUrl(githubConfig, verified.department);
+      setRepoUrlInput(mappedRepoUrl);
+      const parsedMapped = parseGitHubRepoUrl(mappedRepoUrl);
+      if (
+        parsedMapped &&
+        (!githubConfig ||
+          githubConfig.owner !== parsedMapped.owner ||
+          githubConfig.repo !== parsedMapped.repo)
+      ) {
+        onConnectGitHub({
+          owner: parsedMapped.owner,
+          repo: parsedMapped.repo,
+          token: githubConfig?.token || '',
+        });
+      }
       setCloned(false);
       setRollEntryInput('');
       setSandboxTested(false);
@@ -193,7 +217,12 @@ export const StudentWorkbench: React.FC<Props> = ({
 
       const fileName = verified.filePath.split('/')[1] || verified.filePath;
       setCommitSummary(`implement ${fileName}`);
-      setSubmissions(loadSubmissions());
+      if (latestSettings.appsScriptUrl.trim()) {
+        const synced = await syncSubmissionsFromGoogleSheet(latestSettings.appsScriptUrl);
+        setSubmissions(synced);
+      } else {
+        setSubmissions(loadSubmissions());
+      }
     } catch {
       setLoginError('Unable to verify student account. Please contact your faculty.');
     } finally {
@@ -346,8 +375,10 @@ export const StudentWorkbench: React.FC<Props> = ({
     });
   }
 
-  async function saveSubmissionRecord(sourceCodeSnapshot: string) {
-    if (!student) return;
+  async function saveSubmissionRecord(
+    sourceCodeSnapshot: string
+  ): Promise<{ syncedToSheet: boolean; reason?: 'no_url' | 'network_error' }> {
+    if (!student) return { syncedToSheet: false, reason: 'no_url' };
     const prev = currentSubmission;
     const record: SubmissionRecord = {
       id: prev?.id || `sub_${Date.now()}`,
@@ -373,8 +404,12 @@ export const StudentWorkbench: React.FC<Props> = ({
       totalMarks: prev?.totalMarks || 0,
       facultyRemarks: prev?.facultyRemarks || '',
     };
-    await recordSubmissionToSheetAndLocal(record, loadLabSettings().appsScriptUrl);
+    const res = await recordSubmissionToSheetAndLocal(
+      record,
+      loadLabSettings().appsScriptUrl
+    );
     setSubmissions(loadSubmissions());
+    return res;
   }
 
   async function executePush(options?: {
@@ -493,10 +528,14 @@ export const StudentWorkbench: React.FC<Props> = ({
           }
         }
 
-        await saveSubmissionRecord(activeFileContent);
+        const sheetRes = await saveSubmissionRecord(activeFileContent);
         setBanner({
           type: 'success',
-          text: `Pushed ${student.filePath} to GitHub branch "${student.branchName}" and recorded your submission.`,
+          text: sheetRes.syncedToSheet
+            ? `Pushed ${student.filePath} to GitHub branch "${student.branchName}" and synced your submission to Google Sheet.`
+            : sheetRes.reason === 'no_url'
+              ? `Pushed ${student.filePath} to GitHub branch "${student.branchName}". Faculty can evaluate directly from GitHub (attach ?sheet= URL in Student Portal Link to also log to Google Sheet).`
+              : `Pushed ${student.filePath} to GitHub branch "${student.branchName}" (faculty can pull directly from GitHub; Google Sheet sync failed).`,
         });
       } else {
         const state = loadLocalLabState();
@@ -548,10 +587,12 @@ export const StudentWorkbench: React.FC<Props> = ({
         setClonedContribSha(activeContribContent);
         setBranchReady(true);
 
-        await saveSubmissionRecord(activeFileContent);
+        const sheetRes = await saveSubmissionRecord(activeFileContent);
         setBanner({
           type: 'success',
-          text: `Committed & pushed ${student.filePath} to "${student.branchName}" (${commitObj.id}) and saved your submission.`,
+          text: sheetRes.syncedToSheet
+            ? `Committed & pushed ${student.filePath} to "${student.branchName}" (${commitObj.id}) and synced to Google Sheet.`
+            : `Committed & pushed ${student.filePath} to "${student.branchName}" (${commitObj.id}) and saved locally.`,
         });
       }
     } catch (err) {
@@ -628,6 +669,7 @@ export const StudentWorkbench: React.FC<Props> = ({
           student.moduleBranch,
           `Submitted by ${student.name} (${student.regNo}) for \`${student.filePath}\`.`
         );
+        await saveSubmissionRecord(assignedCode);
         setBanner({
           type: 'success',
           text: `Pull Request #${pr.number} opened: ${student.branchName} -> ${student.moduleBranch}.`,
@@ -841,6 +883,46 @@ export const StudentWorkbench: React.FC<Props> = ({
           )}
 
           <form onSubmit={handleCloneRepository} className="mt-5 space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-700" htmlFor="stuProgram">
+                    Program / Department
+                  </label>
+                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    Read-Only
+                  </span>
+                </div>
+                <input
+                  id="stuProgram"
+                  type="text"
+                  readOnly
+                  aria-readonly="true"
+                  value={student.department}
+                  className="w-full cursor-not-allowed rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-700" htmlFor="stuMappedBranch">
+                    Mapped Student Branch
+                  </label>
+                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    Read-Only
+                  </span>
+                </div>
+                <input
+                  id="stuMappedBranch"
+                  type="text"
+                  readOnly
+                  aria-readonly="true"
+                  value={student.branchName}
+                  className="w-full cursor-not-allowed rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 font-mono text-xs font-semibold text-teal-800 focus:outline-none"
+                />
+              </div>
+            </div>
+
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
                 <label className="block text-xs font-semibold text-slate-700" htmlFor="cloneRepoUrl">
@@ -861,7 +943,7 @@ export const StudentWorkbench: React.FC<Props> = ({
                 className="w-full cursor-not-allowed rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 font-mono text-xs text-slate-700 focus:outline-none"
               />
               <p className="mt-1 text-[11px] text-slate-500">
-                Linked automatically from faculty settings (read-only). No separate Git clone or new PAT is needed—just paste the PAT you already generated on GitHub below.
+                Program, Repository, and Branch are auto-mapped from faculty settings (read-only). Just paste your GitHub PAT below.
               </p>
             </div>
 

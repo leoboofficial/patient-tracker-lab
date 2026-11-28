@@ -1,4 +1,10 @@
 import { ModuleBranch, TASKS_54 } from '@/src/data/tasks54';
+import {
+  GitHubBranchInfo,
+  GitHubConfig,
+  GitHubPullRequest,
+  getFileContent,
+} from '@/src/lib/githubClient';
 
 export interface StudentRecord {
   email: string;
@@ -48,6 +54,8 @@ export interface FacultyAuthConfig {
 export interface LabSettings {
   repoUrl: string;
   appsScriptUrl: string;
+  programRepos?: Record<string, string>;
+  prefixBranchWithProgram?: boolean;
 }
 
 const FACULTY_AUTH_KEY = 'pt_mca_faculty_auth_v1';
@@ -128,6 +136,47 @@ export function parseGitHubRepoUrl(url: string): { owner: string; repo: string }
     return { owner: shortMatch[1], repo: shortMatch[2] };
   }
   return null;
+}
+
+export function toProgramSlug(program: string): string {
+  const cleaned = program
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return (cleaned || 'mca').slice(0, 28).replace(/-+$/, '');
+}
+
+export function resolveRepoForProgram(program: string, settings?: LabSettings): string {
+  const s = settings || loadLabSettings();
+  const cleanProg = program.trim().toLowerCase();
+  if (cleanProg && s.programRepos) {
+    for (const [key, val] of Object.entries(s.programRepos)) {
+      if (key.trim().toLowerCase() === cleanProg && val?.trim()) {
+        const parsed = parseGitHubRepoUrl(val);
+        return parsed ? `https://github.com/${parsed.owner}/${parsed.repo}` : val.trim();
+      }
+    }
+  }
+  const parsedDefault = parseGitHubRepoUrl(s.repoUrl || '');
+  return parsedDefault
+    ? `https://github.com/${parsedDefault.owner}/${parsedDefault.repo}`
+    : s.repoUrl || 'https://github.com/faculty/PatientTracker-MCA';
+}
+
+export function resolveStudentBranchName(
+  baseBranch: string,
+  program: string,
+  settings?: LabSettings
+): string {
+  const s = settings || loadLabSettings();
+  const cleanBase = baseBranch.includes('/')
+    ? baseBranch.split('/').pop() || baseBranch
+    : baseBranch;
+  if (s.prefixBranchWithProgram && program.trim()) {
+    return `${toProgramSlug(program)}/${cleanBase}`;
+  }
+  return cleanBase;
 }
 
 export function buildDefaultStudentRoster(): StudentRecord[] {
@@ -242,15 +291,19 @@ export async function verifyStudentWithSheetOrLocal(
           (!isNaN(sheetRoll) && sheetRoll >= 1
             ? TASKS_54[(sheetRoll - 1) % TASKS_54.length]
             : undefined) || TASKS_54[0];
+        const resolvedDepartment =
+          data.student.Department || mapped?.department || 'MCA';
+        const settings = loadLabSettings();
+        const baseBranch = mapped?.branchName || fallbackTask.branchName;
         return {
           email: data.student.Email || cleanEmail,
           regNo: data.student.RegNo || cleanReg,
           name: data.student.Name || mapped?.name || 'Student',
-          department: data.student.Department || mapped?.department || 'MCA',
+          department: resolvedDepartment,
           rollNo: mapped?.rollNo || fallbackTask.rollNo,
           exerciseTitle: mapped?.exerciseTitle || `Ex ${fallbackTask.rollLabel}: ${fallbackTask.summary}`,
           moduleBranch: mapped?.moduleBranch || fallbackTask.moduleBranch,
-          branchName: mapped?.branchName || fallbackTask.branchName,
+          branchName: resolveStudentBranchName(baseBranch, resolvedDepartment, settings),
           filePath: mapped?.filePath || fallbackTask.filePath,
         };
       }
@@ -259,13 +312,18 @@ export async function verifyStudentWithSheetOrLocal(
     }
   }
 
-  return (
+  const localMatch =
     localRoster.find(
       (s) =>
         s.email.toLowerCase() === cleanEmail &&
         s.regNo.toUpperCase() === cleanReg
-    ) || null
-  );
+    ) || null;
+  if (!localMatch) return null;
+  const settings = loadLabSettings();
+  return {
+    ...localMatch,
+    branchName: resolveStudentBranchName(localMatch.branchName, localMatch.department, settings),
+  };
 }
 
 export interface SheetRosterSyncResult {
@@ -321,6 +379,7 @@ export async function syncRosterFromGoogleSheet(
   const existingRoster = loadStudentRoster();
   const mapped: StudentRecord[] = [];
 
+  const settings = loadLabSettings();
   data.students.forEach((row, idx) => {
     const email = String(row.Email || '').trim().toLowerCase();
     const regNo = String(row.RegNo || '').trim().toUpperCase();
@@ -335,16 +394,17 @@ export async function syncRosterFromGoogleSheet(
     const parsedRoll = Number(row.RollNo || row.rowIndex || idx + 1);
     const targetRoll = prev?.rollNo || (!isNaN(parsedRoll) && parsedRoll >= 1 ? parsedRoll : idx + 1);
     const task = TASKS_54[(targetRoll - 1) % TASKS_54.length] || TASKS_54[idx % TASKS_54.length];
+    const department = String(row.Department || prev?.department || 'MCA').trim();
 
     mapped.push({
       email,
       regNo,
       name: String(row.Name || prev?.name || `Student ${idx + 1}`).trim(),
-      department: String(row.Department || prev?.department || 'MCA').trim(),
+      department,
       rollNo: task.rollNo,
       exerciseTitle: `Ex ${task.rollLabel}: ${task.summary}`,
       moduleBranch: task.moduleBranch,
-      branchName: task.branchName,
+      branchName: resolveStudentBranchName(task.branchName, department, settings),
       filePath: task.filePath,
     });
   });
@@ -387,6 +447,10 @@ export async function syncSubmissionsFromGoogleSheet(
         ExerciseTitle?: string;
         Status?: string;
         SourceCode?: string;
+        TotalMarks?: number | string;
+        FacultyRemarks?: string;
+        Branch?: string;
+        FilePath?: string;
       }>;
     };
     if (!Array.isArray(data.submissions)) return localSubs;
@@ -400,17 +464,53 @@ export async function syncSubmissionsFromGoogleSheet(
       const regNo = String(row.RegNo || '').trim().toUpperCase();
       if (!email && !regNo) continue;
 
-      const existingIdx = merged.findIndex(
-        (s) =>
-          s.officialEmail.toLowerCase() === email &&
-          s.regNo.toUpperCase() === regNo &&
-          s.exerciseTitle === String(row.ExerciseTitle || '')
-      );
-      if (existingIdx !== -1) continue;
+      const rowExTitle = String(row.ExerciseTitle || '');
+      const rowFilePath = String(row.FilePath || '');
+      const rowStatus: SubmissionRecord['status'] =
+        row.Status === 'Evaluated' || row.Status === 'Needs Revision'
+          ? row.Status
+          : 'Submitted';
+      const parsedMarks = Number(row.TotalMarks);
+      const hasMarks = !isNaN(parsedMarks) && row.TotalMarks !== '' && row.TotalMarks !== undefined;
+      const rowRemarks = String(row.FacultyRemarks || '');
+      const rowSource = String(row.SourceCode || '');
 
       const studentMatch = roster.find(
-        (s) => s.email.toLowerCase() === email || s.regNo.toUpperCase() === regNo
+        (s) =>
+          (email && s.email.toLowerCase() === email) ||
+          (regNo && s.regNo.toUpperCase() === regNo)
       );
+
+      const existingIdx = merged.findIndex(
+        (s) =>
+          (regNo && s.regNo.toUpperCase() === regNo &&
+            ((rowFilePath && s.filePath === rowFilePath) ||
+              (rowExTitle && s.exerciseTitle === rowExTitle))) ||
+          (s.officialEmail.toLowerCase() === email &&
+            s.regNo.toUpperCase() === regNo &&
+            s.exerciseTitle === rowExTitle)
+      );
+
+      if (existingIdx !== -1) {
+        const cur = merged[existingIdx];
+        const nextStatus =
+          rowStatus === 'Evaluated' || rowStatus === 'Needs Revision'
+            ? rowStatus
+            : cur.status;
+        merged[existingIdx] = {
+          ...cur,
+          timestamp:
+            cur.status === 'Submitted' && row.Timestamp
+              ? String(row.Timestamp)
+              : cur.timestamp,
+          sourceCode:
+            cur.status === 'Submitted' && rowSource ? rowSource : cur.sourceCode || rowSource,
+          status: nextStatus,
+          totalMarks: hasMarks && nextStatus !== 'Submitted' ? parsedMarks : cur.totalMarks,
+          facultyRemarks: rowRemarks || cur.facultyRemarks,
+        };
+        continue;
+      }
 
       merged.push({
         id: `sheet_${regNo}_${Date.parse(String(row.Timestamp || '')) || merged.length}`,
@@ -419,15 +519,12 @@ export async function syncSubmissionsFromGoogleSheet(
         regNo,
         studentName: String(row.StudentName || studentMatch?.name || 'Student'),
         department: studentMatch?.department || 'MCA',
-        exerciseTitle: String(row.ExerciseTitle || studentMatch?.exerciseTitle || ''),
-        branchName: studentMatch?.branchName || 'main',
-        filePath: studentMatch?.filePath || 'login/index.html',
+        exerciseTitle: rowExTitle || studentMatch?.exerciseTitle || '',
+        branchName: String(row.Branch || studentMatch?.branchName || 'main'),
+        filePath: rowFilePath || studentMatch?.filePath || 'login/index.html',
         repoUrl,
-        status:
-          row.Status === 'Evaluated' || row.Status === 'Needs Revision'
-            ? row.Status
-            : 'Submitted',
-        sourceCode: String(row.SourceCode || ''),
+        status: rowStatus,
+        sourceCode: rowSource,
         rubric: {
           repoAndGitignore: 0,
           conventionalCommits: 0,
@@ -436,8 +533,8 @@ export async function syncSubmissionsFromGoogleSheet(
           ciPipeline: 0,
           workingPageAndViva: 0,
         },
-        totalMarks: 0,
-        facultyRemarks: '',
+        totalMarks: hasMarks ? parsedMarks : 0,
+        facultyRemarks: rowRemarks,
       });
     }
 
@@ -448,10 +545,159 @@ export async function syncSubmissionsFromGoogleSheet(
   }
 }
 
+export async function syncSubmissionsFromGitHub(
+  cfg: GitHubConfig,
+  roster: StudentRecord[],
+  branches: GitHubBranchInfo[],
+  prs: GitHubPullRequest[]
+): Promise<{ submissions: SubmissionRecord[]; syncedCount: number }> {
+  const localSubs = loadSubmissions();
+  if (!cfg.owner || !cfg.repo) {
+    return { submissions: localSubs, syncedCount: 0 };
+  }
+
+  const branchSet = new Set(branches.map((b) => b.name));
+  const prByBranch = new Map<string, GitHubPullRequest>();
+  for (const pr of prs) {
+    if (!prByBranch.has(pr.head.ref)) {
+      prByBranch.set(pr.head.ref, pr);
+    }
+  }
+
+  interface CandidateTarget {
+    branchName: string;
+    filePath: string;
+    exerciseTitle: string;
+    starterCode: string;
+    student?: StudentRecord;
+  }
+
+  const candidateMap = new Map<string, CandidateTarget>();
+
+  for (const stu of roster) {
+    if (branchSet.has(stu.branchName) || prByBranch.has(stu.branchName)) {
+      const task =
+        TASKS_54.find((t) => t.branchName === stu.branchName || t.filePath === stu.filePath) ||
+        TASKS_54[0];
+      candidateMap.set(stu.branchName, {
+        branchName: stu.branchName,
+        filePath: stu.filePath,
+        exerciseTitle: stu.exerciseTitle,
+        starterCode: task.starterCode,
+        student: stu,
+      });
+    }
+  }
+
+  for (const task of TASKS_54) {
+    if (
+      !candidateMap.has(task.branchName) &&
+      (branchSet.has(task.branchName) || prByBranch.has(task.branchName))
+    ) {
+      candidateMap.set(task.branchName, {
+        branchName: task.branchName,
+        filePath: task.filePath,
+        exerciseTitle: `Ex ${task.rollLabel}: ${task.summary}`,
+        starterCode: task.starterCode,
+      });
+    }
+  }
+
+  const candidates = Array.from(candidateMap.values());
+  if (candidates.length === 0) {
+    return { submissions: localSubs, syncedCount: 0 };
+  }
+
+  const merged = [...localSubs];
+  let syncedCount = 0;
+  const repoUrl = `https://github.com/${cfg.owner}/${cfg.repo}`;
+
+  const BATCH_SIZE = 6;
+  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+    const batch = candidates.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map(async (item) => {
+        try {
+          const remote = await getFileContent(cfg, item.filePath, item.branchName);
+          return { item, remote };
+        } catch {
+          return { item, remote: null };
+        }
+      })
+    );
+
+    for (const { item, remote } of results) {
+      if (!remote) continue;
+      const pr = prByBranch.get(item.branchName);
+      const changedFromStarter = remote.content.trim() !== item.starterCode.trim();
+      if (!changedFromStarter && !pr) continue;
+
+      syncedCount++;
+      const stu = item.student;
+      const regNo = stu?.regNo || pr?.user?.login?.toUpperCase() || item.branchName.toUpperCase();
+      const email = stu?.email || '';
+      const studentName = stu?.name || pr?.user?.login || item.branchName;
+
+      const existingIdx = merged.findIndex(
+        (s) =>
+          (stu &&
+            s.regNo.toUpperCase() === stu.regNo.toUpperCase() &&
+            s.filePath === item.filePath) ||
+          s.branchName === item.branchName
+      );
+
+      if (existingIdx !== -1) {
+        const cur = merged[existingIdx];
+        merged[existingIdx] = {
+          ...cur,
+          officialEmail: cur.officialEmail || email,
+          regNo: stu?.regNo || cur.regNo,
+          studentName: stu?.name || cur.studentName,
+          department: stu?.department || cur.department,
+          exerciseTitle: stu?.exerciseTitle || cur.exerciseTitle || item.exerciseTitle,
+          repoUrl,
+          sourceCode:
+            cur.status === 'Submitted' || !cur.sourceCode ? remote.content : cur.sourceCode,
+        };
+      } else {
+        merged.unshift({
+          id: `gh_${item.branchName}_${Date.now()}_${syncedCount}`,
+          timestamp: pr?.created_at || new Date().toISOString(),
+          officialEmail: email,
+          regNo,
+          studentName,
+          department: stu?.department || 'MCA',
+          exerciseTitle: item.exerciseTitle,
+          branchName: item.branchName,
+          filePath: item.filePath,
+          repoUrl,
+          status: 'Submitted',
+          sourceCode: remote.content,
+          rubric: {
+            repoAndGitignore: 0,
+            conventionalCommits: 0,
+            branchingAndConflicts: 0,
+            prsAndCodeReview: 0,
+            ciPipeline: 0,
+            workingPageAndViva: 0,
+          },
+          totalMarks: 0,
+          facultyRemarks: '',
+        });
+      }
+    }
+  }
+
+  if (syncedCount > 0) {
+    saveSubmissions(merged);
+  }
+  return { submissions: merged, syncedCount };
+}
+
 export async function recordSubmissionToSheetAndLocal(
   record: SubmissionRecord,
   appsScriptUrl: string
-): Promise<{ syncedToSheet: boolean }> {
+): Promise<{ syncedToSheet: boolean; reason?: 'no_url' | 'network_error' }> {
   const existing = loadSubmissions();
   const idx = existing.findIndex(
     (s) =>
@@ -466,13 +712,15 @@ export async function recordSubmissionToSheetAndLocal(
   }
   saveSubmissions(existing);
 
-  if (!appsScriptUrl.trim()) {
-    return { syncedToSheet: false };
+  const cleanUrl = appsScriptUrl.trim();
+  if (!cleanUrl) {
+    return { syncedToSheet: false, reason: 'no_url' };
   }
 
   try {
-    await fetch(appsScriptUrl.trim(), {
+    await fetch(cleanUrl, {
       method: 'POST',
+      mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
         action: 'saveSubmission',
@@ -481,13 +729,17 @@ export async function recordSubmissionToSheetAndLocal(
         'Reg No': record.regNo,
         'Student Name': record.studentName,
         'Exercise Title': record.exerciseTitle,
+        Branch: record.branchName,
+        'File Path': record.filePath,
         Status: record.status,
         'Source Code': record.sourceCode,
+        'Total Marks': record.totalMarks,
+        'Faculty Remarks': record.facultyRemarks,
       }),
     });
     return { syncedToSheet: true };
   } catch {
-    return { syncedToSheet: false };
+    return { syncedToSheet: false, reason: 'network_error' };
   }
 }
 
@@ -515,12 +767,38 @@ export async function sendFacultyOtp(
   }
 }
 
-export const APPS_SCRIPT_TEMPLATE = `function doGet(e) {
+export const APPS_SCRIPT_TEMPLATE = `function getSheetCaseInsensitive_(ss, names) {
+  for (var i = 0; i < names.length; i++) {
+    var exact = ss.getSheetByName(names[i]);
+    if (exact) return exact;
+  }
+  var all = ss.getSheets();
+  var lower = names.map(function(n) { return n.toLowerCase(); });
+  for (var j = 0; j < all.length; j++) {
+    if (lower.indexOf(all[j].getName().toLowerCase()) !== -1) return all[j];
+  }
+  return null;
+}
+
+function getOrCreateSubmissionSheet_(ss) {
+  var sheet = getSheetCaseInsensitive_(ss, ["submission", "submissions"]);
+  if (!sheet) {
+    sheet = ss.insertSheet("submission");
+    sheet.appendRow([
+      "Timestamp", "Official Email", "Reg No", "Student Name",
+      "Exercise Title", "Status", "Source Code", "Total Marks",
+      "Faculty Remarks", "Branch", "File Path"
+    ]);
+  }
+  return sheet;
+}
+
+function doGet(e) {
   var action = e.parameter.action;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (action === "verifyStudent") {
-    var sheet = ss.getSheetByName("students");
-    var rows = sheet.getDataRange().getValues();
+    var sheet = getSheetCaseInsensitive_(ss, ["students", "student"]);
+    var rows = sheet ? sheet.getDataRange().getValues() : [];
     var email = (e.parameter.email || "").toLowerCase().trim();
     var regNo = (e.parameter.regNo || "").toUpperCase().trim();
     for (var i = 1; i < rows.length; i++) {
@@ -542,8 +820,8 @@ export const APPS_SCRIPT_TEMPLATE = `function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
   if (action === "listStudents") {
-    var sheet = ss.getSheetByName("students");
-    var rows = sheet.getDataRange().getValues();
+    var sheet = getSheetCaseInsensitive_(ss, ["students", "student"]);
+    var rows = sheet ? sheet.getDataRange().getValues() : [];
     var students = [];
     for (var i = 1; i < rows.length; i++) {
       if (!rows[i][0] && !rows[i][1]) continue;
@@ -560,7 +838,7 @@ export const APPS_SCRIPT_TEMPLATE = `function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
   if (action === "listSubmissions") {
-    var subSheet = ss.getSheetByName("submission");
+    var subSheet = getSheetCaseInsensitive_(ss, ["submission", "submissions"]);
     var subRows = subSheet ? subSheet.getDataRange().getValues() : [];
     var submissions = [];
     for (var j = 1; j < subRows.length; j++) {
@@ -572,7 +850,11 @@ export const APPS_SCRIPT_TEMPLATE = `function doGet(e) {
         StudentName: String(subRows[j][3] || ""),
         ExerciseTitle: String(subRows[j][4] || ""),
         Status: String(subRows[j][5] || "Submitted"),
-        SourceCode: String(subRows[j][6] || "")
+        SourceCode: String(subRows[j][6] || ""),
+        TotalMarks: subRows[j][7] !== undefined && subRows[j][7] !== "" ? Number(subRows[j][7]) : "",
+        FacultyRemarks: String(subRows[j][8] || ""),
+        Branch: String(subRows[j][9] || ""),
+        FilePath: String(subRows[j][10] || "")
       });
     }
     return ContentService.createTextOutput(JSON.stringify({ ok: true, submissions: submissions }))
@@ -586,16 +868,39 @@ function doPost(e) {
   var data = JSON.parse(e.postData.contents);
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (data.action === "saveSubmission") {
-    var sheet = ss.getSheetByName("submission");
-    sheet.appendRow([
-      data.Timestamp,
-      data["Official Email"],
-      data["Reg No"],
-      data["Student Name"],
-      data["Exercise Title"],
-      data.Status,
-      data["Source Code"]
-    ]);
+    var sheet = getOrCreateSubmissionSheet_(ss);
+    var rows = sheet.getDataRange().getValues();
+    var targetEmail = String(data["Official Email"] || "").toLowerCase().trim();
+    var targetReg = String(data["Reg No"] || "").toUpperCase().trim();
+    var targetEx = String(data["Exercise Title"] || "").trim();
+    var rowValues = [
+      data.Timestamp || new Date().toISOString(),
+      data["Official Email"] || "",
+      data["Reg No"] || "",
+      data["Student Name"] || "",
+      data["Exercise Title"] || "",
+      data.Status || "Submitted",
+      data["Source Code"] || "",
+      data["Total Marks"] !== undefined ? data["Total Marks"] : "",
+      data["Faculty Remarks"] || "",
+      data.Branch || "",
+      data["File Path"] || ""
+    ];
+    var updatedRow = -1;
+    for (var i = 1; i < rows.length; i++) {
+      var rEmail = String(rows[i][1] || "").toLowerCase().trim();
+      var rReg = String(rows[i][2] || "").toUpperCase().trim();
+      var rEx = String(rows[i][4] || "").trim();
+      if (rReg === targetReg && (rEmail === targetEmail || !rEmail || !targetEmail) && rEx === targetEx) {
+        updatedRow = i + 1;
+        break;
+      }
+    }
+    if (updatedRow !== -1) {
+      sheet.getRange(updatedRow, 1, 1, rowValues.length).setValues([rowValues]);
+    } else {
+      sheet.appendRow(rowValues);
+    }
   } else if (data.action === "sendOtp") {
     MailApp.sendEmail(data.email, "PatientTracker Faculty Password Reset OTP", "Your OTP code is: " + data.otp);
   }

@@ -13,6 +13,7 @@ interface Props {
   config: GitHubConfig | null;
   onConnect: (cfg: GitHubConfig, meta: { fullName: string; defaultBranch: string; htmlUrl: string }) => void;
   onDisconnect: () => void;
+  readOnlyRepo?: boolean;
 }
 
 export const GitHubConnectModal: React.FC<Props> = ({
@@ -21,6 +22,7 @@ export const GitHubConnectModal: React.FC<Props> = ({
   config,
   onConnect,
   onDisconnect,
+  readOnlyRepo = false,
 }) => {
   const [mode, setMode] = useState<'existing' | 'create'>('existing');
   const [repoUrl, setRepoUrl] = useState(() => {
@@ -37,6 +39,9 @@ export const GitHubConnectModal: React.FC<Props> = ({
 
   useEffect(() => {
     if (!open) return;
+    if (readOnlyRepo) {
+      setMode('existing');
+    }
     if (config?.owner && config?.repo) {
       setRepoUrl(`https://github.com/${config.owner}/${config.repo}`);
       setNewRepoName(config.repo);
@@ -50,7 +55,7 @@ export const GitHubConnectModal: React.FC<Props> = ({
       setToken(config.token);
     }
     setError('');
-  }, [open, config]);
+  }, [open, config, readOnlyRepo]);
 
   if (!open) return null;
 
@@ -140,29 +145,33 @@ export const GitHubConnectModal: React.FC<Props> = ({
         </div>
 
         <p className="mb-4 text-sm text-slate-600">
-          Connect directly to a real GitHub repository so faculty can initialize module branches and students can push code to their assigned branches. Your token stays strictly in browser memory for this session.
+          {readOnlyRepo
+            ? 'Your repository is locked by faculty based on your program. Paste your GitHub Personal Access Token below to push to your assigned branch.'
+            : 'Connect directly to a real GitHub repository so faculty can initialize module branches and students can push code to their assigned branches. Your token stays strictly in browser memory for this session.'}
         </p>
 
-        <div className="mb-5 flex items-center gap-1 rounded-lg bg-slate-100 p-1">
-          <button
-            type="button"
-            onClick={() => { setMode('existing'); setError(''); }}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-              mode === 'existing' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Connect Existing Repo
-          </button>
-          <button
-            type="button"
-            onClick={() => { setMode('create'); setError(''); }}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-              mode === 'create' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Create New Faculty Repo
-          </button>
-        </div>
+        {!readOnlyRepo && (
+          <div className="mb-5 flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => { setMode('existing'); setError(''); }}
+              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                mode === 'existing' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Connect Existing Repo
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('create'); setError(''); }}
+              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                mode === 'create' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Create New Faculty Repo
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">
@@ -174,17 +183,32 @@ export const GitHubConnectModal: React.FC<Props> = ({
         {mode === 'existing' ? (
           <form onSubmit={handleConnectExisting} className="space-y-4">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-700" htmlFor="ghRepoUrl">
-                GitHub Repository URL
-              </label>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="block text-xs font-semibold text-slate-700" htmlFor="ghRepoUrl">
+                  GitHub Repository URL
+                </label>
+                {readOnlyRepo && (
+                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    Read-Only
+                  </span>
+                )}
+              </div>
               <input
                 id="ghRepoUrl"
                 type="text"
                 required
+                readOnly={readOnlyRepo}
+                aria-readonly={readOnlyRepo}
                 value={repoUrl}
-                onChange={(e) => setRepoUrl(e.target.value)}
+                onChange={(e) => {
+                  if (!readOnlyRepo) setRepoUrl(e.target.value);
+                }}
                 placeholder="https://github.com/username/PatientTracker-MCA"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-700 focus:outline-none"
+                className={`w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:outline-none ${
+                  readOnlyRepo
+                    ? 'cursor-not-allowed bg-slate-100 text-slate-700'
+                    : 'focus:border-teal-700'
+                }`}
               />
               {parsedExisting ? (
                 <p className="mt-1 text-xs text-teal-800">

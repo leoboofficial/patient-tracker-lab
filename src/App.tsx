@@ -19,6 +19,8 @@ interface ParsedHash {
   repo: string;
   sheet: string;
   repoUrl: string;
+  pmap: Record<string, string> | null;
+  pprefix: boolean | null;
 }
 
 function parseHash(hash: string): ParsedHash {
@@ -34,6 +36,21 @@ function parseHash(hash: string): ParsedHash {
   const rollNo =
     !isNaN(rollParsed) && rollParsed >= 1 && rollParsed <= 54 ? rollParsed : null;
 
+  let pmap: Record<string, string> | null = null;
+  const rawPmap = params.get('pmap');
+  if (rawPmap) {
+    try {
+      const parsedMap = JSON.parse(rawPmap);
+      if (parsedMap && typeof parsedMap === 'object' && !Array.isArray(parsedMap)) {
+        pmap = parsedMap as Record<string, string>;
+      }
+    } catch {
+      // ignore invalid pmap query param
+    }
+  }
+  const rawPprefix = params.get('pprefix');
+  const pprefix = rawPprefix === '1' ? true : rawPprefix === '0' ? false : null;
+
   return {
     route,
     rollNo,
@@ -41,6 +58,8 @@ function parseHash(hash: string): ParsedHash {
     repo: params.get('repo') || '',
     sheet: params.get('sheet') || '',
     repoUrl: params.get('repoUrl') || '',
+    pmap,
+    pprefix,
   };
 }
 
@@ -52,10 +71,20 @@ function syncSettingsFromHash(parsed: ParsedHash): void {
       ? `https://github.com/${parsed.owner}/${parsed.repo}`
       : parsed.repoUrl || existing.repoUrl;
   const nextSheet = parsed.sheet || existing.appsScriptUrl;
-  if (nextRepoUrl !== existing.repoUrl || nextSheet !== existing.appsScriptUrl) {
+  const nextPmap = parsed.pmap || existing.programRepos;
+  const nextPprefix =
+    parsed.pprefix !== null ? parsed.pprefix : existing.prefixBranchWithProgram;
+  if (
+    nextRepoUrl !== existing.repoUrl ||
+    nextSheet !== existing.appsScriptUrl ||
+    parsed.pmap !== null ||
+    parsed.pprefix !== null
+  ) {
     saveLabSettings({
       repoUrl: nextRepoUrl,
       appsScriptUrl: nextSheet,
+      programRepos: nextPmap,
+      prefixBranchWithProgram: nextPprefix,
     });
   }
 }
@@ -63,7 +92,16 @@ function syncSettingsFromHash(parsed: ParsedHash): void {
 export default function App() {
   const [parsed, setParsed] = useState<ParsedHash>(() => {
     if (typeof window === 'undefined') {
-      return { route: 'student', rollNo: null, owner: '', repo: '', sheet: '', repoUrl: '' };
+      return {
+        route: 'student',
+        rollNo: null,
+        owner: '',
+        repo: '',
+        sheet: '',
+        repoUrl: '',
+        pmap: null,
+        pprefix: null,
+      };
     }
     if (!window.location.hash) {
       window.location.hash = '#/student';
@@ -150,6 +188,7 @@ export default function App() {
         open={ghModalOpen}
         onClose={() => setGhModalOpen(false)}
         config={githubConfig}
+        readOnlyRepo={parsed.route === 'student'}
         onConnect={(cfg) => {
           setGithubConfig(cfg);
           if (parsed.route === 'faculty') {
