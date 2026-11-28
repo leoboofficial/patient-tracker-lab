@@ -227,17 +227,23 @@ export const StudentWorkbench: React.FC<Props> = ({
         onConnectGitHub(activeCfg);
 
         const branches = await listBranches(activeCfg);
+        const isRepoEmpty = branches.length === 0;
         const hasPersonal = branches.some((b) => b.name === student.branchName);
         const sourceBranch = hasPersonal
           ? student.branchName
           : branches.some((b) => b.name === student.moduleBranch)
             ? student.moduleBranch
-            : 'main';
+            : branches.find((b) => b.name === 'main')?.name ||
+              branches.find((b) => b.name === 'master')?.name ||
+              branches[0]?.name ||
+              'main';
 
-        const [remoteAssigned, remoteContrib] = await Promise.all([
-          getFileContent(activeCfg, student.filePath, sourceBranch),
-          getFileContent(activeCfg, 'CONTRIBUTORS.txt', sourceBranch),
-        ]);
+        const [remoteAssigned, remoteContrib] = isRepoEmpty
+          ? [null, null]
+          : await Promise.all([
+              getFileContent(activeCfg, student.filePath, sourceBranch),
+              getFileContent(activeCfg, 'CONTRIBUTORS.txt', sourceBranch),
+            ]);
 
         setRepoFiles(refFiles);
         setAssignedCode(remoteAssigned?.content ?? fallbackStarter);
@@ -251,8 +257,10 @@ export const StudentWorkbench: React.FC<Props> = ({
         setActiveTab('assigned');
         setCloned(true);
         setBanner({
-          type: 'success',
-          text: `Cloned ${parsed.owner}/${parsed.repo} (${sourceBranch}) into your sandbox for ${student.filePath}.`,
+          type: isRepoEmpty ? 'info' : 'success',
+          text: isRepoEmpty
+            ? `Connected to ${parsed.owner}/${parsed.repo}. Repository has no starter commits yet, so the starter template for ${student.filePath} was loaded (branch ${student.branchName} will be created when you push).`
+            : `Connected to ${parsed.owner}/${parsed.repo} (${sourceBranch}) and loaded ${student.filePath}.`,
         });
       } else {
         let state = loadLocalLabState();
@@ -286,9 +294,14 @@ export const StudentWorkbench: React.FC<Props> = ({
         });
       }
     } catch (err) {
+      const rawMsg = err instanceof Error ? err.message : 'Unable to connect to repository.';
+      const friendlyMsg =
+        rawMsg.toLowerCase().includes('not found')
+          ? `Could not access ${repoUrlInput}. Verify your PAT has "Only select repositories -> ${repoUrlInput.split('/').pop()}" with Contents & Pull Requests (Read/Write), or leave PAT empty for Local Sandbox.`
+          : rawMsg;
       setBanner({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Unable to clone repository.',
+        text: friendlyMsg,
       });
     } finally {
       setCloneBusy(false);
@@ -779,7 +792,7 @@ export const StudentWorkbench: React.FC<Props> = ({
           <section className="rounded-xl border border-slate-200 bg-white p-6 lg:col-span-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Clone Lab Repository</h1>
+              <h1 className="text-xl font-bold text-slate-900">Connect GitHub PAT &amp; Open Workspace</h1>
               <p className="mt-1 text-sm text-slate-600">
                 Welcome, <strong className="text-slate-900">{student.name}</strong> ({student.regNo} · {student.department}).
               </p>
@@ -848,24 +861,24 @@ export const StudentWorkbench: React.FC<Props> = ({
                 className="w-full cursor-not-allowed rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 font-mono text-xs text-slate-700 focus:outline-none"
               />
               <p className="mt-1 text-[11px] text-slate-500">
-                Automatically populated from your faculty&apos;s repository settings (read-only). Only your GitHub PAT is required below.
+                Linked automatically from faculty settings (read-only). No separate Git clone or new PAT is needed—just paste the PAT you already generated on GitHub below.
               </p>
             </div>
 
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-700" htmlFor="cloneToken">
-                GitHub Personal Access Token (Optional for Local Sandbox)
+                Your Existing GitHub PAT (Optional for Local Sandbox)
               </label>
               <input
                 id="cloneToken"
                 type="password"
                 value={studentTokenInput}
                 onChange={(e) => setStudentTokenInput(e.target.value)}
-                placeholder="ghp_... (kept in browser memory only)"
+                placeholder="ghp_... or github_pat_... (kept in memory only)"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs focus:border-teal-700 focus:outline-none"
               />
               <p className="mt-1 text-[11px] text-slate-500">
-                Leave empty to practice in the Local Lab Sandbox, or paste your GitHub PAT to push directly to GitHub.
+                Paste your PAT (with access to this faculty repository) so the editor can load &amp; push your branch, or leave empty to practice offline in the Local Sandbox.
               </p>
             </div>
 
@@ -875,7 +888,7 @@ export const StudentWorkbench: React.FC<Props> = ({
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
             >
               <FolderGit2 className="h-4 w-4" />
-              {cloneBusy ? 'Cloning Assigned Branch...' : 'Clone Repository & Open Editor'}
+              {cloneBusy ? 'Connecting & Loading File...' : 'Connect PAT & Open Exercise Editor'}
             </button>
           </form>
         </section>

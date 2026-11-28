@@ -78,6 +78,10 @@ function fromBase64Utf8(b64: string): string {
   return new TextDecoder().decode(bytes);
 }
 
+function sanitizeToken(token: string): string {
+  return token.replace(/[^\x21-\x7E]/g, '').trim();
+}
+
 async function ghFetch<T>(
   cfg: GitHubConfig,
   endpoint: string,
@@ -86,17 +90,37 @@ async function ghFetch<T>(
   validateRepoSlug(cfg.owner, cfg.repo);
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
     ...(options.headers as Record<string, string> | undefined),
   };
-  if (cfg.token.trim()) {
-    headers.Authorization = `Bearer ${cfg.token.trim()}`;
+  const cleanToken = sanitizeToken(cfg.token || '');
+  if (cleanToken) {
+    headers.Authorization = `Bearer ${cleanToken}`;
   }
 
-  const res = await fetch(`https://api.github.com${endpoint}`, {
-    ...options,
-    headers,
-  });
+  const method = (options.method || 'GET').toUpperCase();
+  const url = `https://api.github.com${endpoint}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch (err) {
+    if (method === 'GET') {
+      try {
+        await new Promise((r) => setTimeout(r, 350));
+        res = await fetch(url, { ...options, headers });
+      } catch {
+        throw new Error(
+          'Network error reaching GitHub API (Failed to fetch). Check your internet connection or firewall, and ensure your PAT contains no stray characters.'
+        );
+      }
+    } else {
+      throw new Error(
+        err instanceof Error && err.message !== 'Failed to fetch'
+          ? err.message
+          : 'Network error reaching GitHub API (Failed to fetch). Check your internet connection and retry.'
+      );
+    }
+  }
 
   if (!res.ok) {
     let errMsg = `GitHub API error (${res.status})`;
@@ -168,12 +192,29 @@ export async function createGitHubRepo(token: string, repoName: string, isPrivat
   };
 }
 
-export async function listBranches(cfg: GitHubConfig): Promise<GitHubBranchInfo[]> {
-  const data = await ghFetch<Array<{ name: string; commit: { sha: string } }>>(
-    cfg,
-    `/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/branches?per_page=100`
+function isEmptyOrMissingRepoError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    msg.includes('not found') ||
+    msg.includes('repository is empty') ||
+    msg.includes('git repository is empty')
   );
-  return data.map((b) => ({ name: b.name, sha: b.commit.sha }));
+}
+
+export async function listBranches(cfg: GitHubConfig): Promise<GitHubBranchInfo[]> {
+  try {
+    const data = await ghFetch<Array<{ name: string; commit: { sha: string } }>>(
+      cfg,
+      `/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/branches?per_page=100`
+    );
+    return data.map((b) => ({ name: b.name, sha: b.commit.sha }));
+  } catch (err) {
+    if (err instanceof Error && err.message.toLowerCase().includes('repository is empty')) {
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function createBranchFrom(
@@ -181,13 +222,34 @@ export async function createBranchFrom(
   newBranch: string,
   baseBranch: string
 ): Promise<GitHubBranchInfo> {
-  const branches = await listBranches(cfg);
+  let branches = await listBranches(cfg);
   const existing = branches.find((b) => b.name === newBranch);
   if (existing) return existing;
 
-  const base = branches.find((b) => b.name === baseBranch);
+  // If the repository has 0 commits yet, create an initial commit on main first
+  if (branches.length === 0) {
+    await putFileContent(
+      cfg,
+      'README.md',
+      '# PatientTracker-MCA\n\nHTML5, CSS3, JavaScript & JSON Lab Repository.\n',
+      'chore: initialize repository',
+      'main'
+    );
+    branches = await listBranches(cfg);
+  }
+
+  const base =
+    branches.find((b) => b.name === baseBranch) ||
+    branches.find((b) => b.name === 'main') ||
+    branches.find((b) => b.name === 'master') ||
+    branches[0];
+
   if (!base) {
     throw new Error(`Base branch "${baseBranch}" does not exist yet.`);
+  }
+
+  if (newBranch === base.name) {
+    return base;
   }
 
   await ghFetch(
@@ -220,7 +282,7 @@ export async function getFileContent(
       sha: data.sha,
     };
   } catch (err) {
-    if (err instanceof Error && err.message.toLowerCase().includes('not found')) {
+    if (isEmptyOrMissingRepoError(err)) {
       return null;
     }
     throw err;
@@ -299,10 +361,17 @@ export async function putFileContent(
 }
 
 export async function listPullRequests(cfg: GitHubConfig): Promise<GitHubPullRequest[]> {
-  return ghFetch<GitHubPullRequest[]>(
-    cfg,
-    `/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/pulls?state=all&per_page=100`
-  );
+  try {
+    return await ghFetch<GitHubPullRequest[]>(
+      cfg,
+      `/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/pulls?state=all&per_page=100`
+    );
+  } catch (err) {
+    if (err instanceof Error && err.message.toLowerCase().includes('repository is empty')) {
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function createPullRequest(
